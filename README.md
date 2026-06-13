@@ -38,6 +38,9 @@ The library is a standalone open-source deliverable — Cantonese TTS pre-proces
   - Currency symbols: `HK$100` → `jat1 baak3 jyun4`; `¥500` → `ng5 baak3 jat6 jyun4`; `€200` → `ji6 baak3 au1 jyun4`
   - Currency codes: `USD100` → `jat1 baak3 mei5 jyun4`; `EUR 200` → `ji6 baak3 au1 jyun4`
   - Measurement units: `120km/h` → 一百二十公里每小時; `36.5°C` → 三十六點五攝氏度; `75kg` → 七十五公斤
+  - Fractions: `1/2` → 二分之一; `3/4` → 四分之三
+  - Scores: `3:1` → 三比一; `10:0` → 十比零
+  - Ordinal/floor/episode: `第3名` → 第三名; `3樓` → 三樓; `第3集` → 第三集
   - Time: `下午3時15分` → Cantonese spoken time
   - Phone numbers: digit-by-digit expansion
 - **Polyphone disambiguation** via longest-match word-level segmentation (~85% accuracy)
@@ -291,7 +294,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 184 tests should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency normalization, batch processing, and `convert_detailed()` output structure.
+All 228 tests should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, and `convert_detailed()` output structure.
 
 ---
 

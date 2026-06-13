@@ -205,7 +205,44 @@ pub fn normalize(text: &str) -> String {
                         i = j;
                     }
                 } else {
-                    // integer — use context-sensitive rules (year/date/phone/etc.)
+                    // ── Fraction: N/M → M分之N (e.g. 1/2 → 二分之一) ────
+                    // Guard: both parts ≤ 3 digits; reject if denominator
+                    // is followed by an alpha char (would be a unit like km/h,
+                    // already caught by match_unit above, but belt-and-suspenders).
+                    if next == Some('/') && num_str.len() <= 3 {
+                        if let Some((denom_str, denom_len)) = scan_number(&chars, j + 1) {
+                            let after = chars.get(j + 1 + denom_len);
+                            let is_unit_suffix = after.map(|c: &char| c.is_ascii_alphabetic()).unwrap_or(false);
+                            if denom_str.len() <= 3 && !is_unit_suffix {
+                                if let (Ok(numer), Ok(denom)) =
+                                    (num_str.parse::<u64>(), denom_str.parse::<u64>())
+                                {
+                                    out.push_str(&cardinal(denom));
+                                    out.push_str("分之");
+                                    out.push_str(&cardinal(numer));
+                                    i = j + 1 + denom_len;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+
+                    // ── Score: N:M or N：M → N比M (e.g. 3:1 → 三比一) ──
+                    if next == Some(':') || next == Some('：') {
+                        if let Some((score_str, score_len)) = scan_number(&chars, j + 1) {
+                            if let (Ok(numer), Ok(score)) =
+                                (num_str.parse::<u64>(), score_str.parse::<u64>())
+                            {
+                                out.push_str(&cardinal(numer));
+                                out.push('比');
+                                out.push_str(&cardinal(score));
+                                i = j + 1 + score_len;
+                                continue;
+                            }
+                        }
+                    }
+
+                    // ── Context-sensitive rules (year/date/phone/ordinal/…) ─
                     let expanded = expand_digits(&num_str, next);
                     out.push_str(&expanded);
                     if next == Some('%') || next == Some('％') {
@@ -420,8 +457,14 @@ fn expand_digits(digits: &str, next: Option<char>) -> String {
     if next == Some('年') {
         return digits_to_chars(digits);
     }
-    // date/time suffixes → cardinal
-    if matches!(next, Some('月') | Some('日') | Some('號') | Some('時') | Some('點') | Some('分') | Some('秒')) {
+    // date/time + floor/room/ordinal suffixes → cardinal
+    if matches!(next,
+        Some('月') | Some('日') | Some('號') | Some('時') | Some('點') | Some('分') | Some('秒') |
+        // floor / room
+        Some('樓') | Some('室') | Some('層') |
+        // ordinal / ranking / episode
+        Some('名') | Some('位') | Some('屆') | Some('集') | Some('季') | Some('期') | Some('班') | Some('組')
+    ) {
         if let Ok(v) = digits.parse::<u64>() {
             return cardinal(v);
         }
@@ -633,6 +676,32 @@ mod tests {
     #[test] fn norm_gbp_sym(){ assert_eq!(normalize("£80"),     "八十英鎊"); }
     #[test] fn norm_rmb_sym(){ assert_eq!(normalize("￥200"),   "二百人民幣"); }
     #[test] fn norm_usd_sp() { assert_eq!(normalize("USD 100"), "一百美元"); }
+
+    // ── normalize: ordinal / floor / room ────────────────────────────────────
+    #[test] fn norm_ordinal_3rd()   { assert_eq!(normalize("第3名"),   "第三名"); }
+    #[test] fn norm_ordinal_10th()  { assert_eq!(normalize("第10名"),  "第十名"); }
+    #[test] fn norm_ordinal_pos()   { assert_eq!(normalize("第2位"),   "第二位"); }
+    #[test] fn norm_ordinal_ep()    { assert_eq!(normalize("第3集"),   "第三集"); }
+    #[test] fn norm_ordinal_term()  { assert_eq!(normalize("第12屆"),  "第十二屆"); }
+    #[test] fn norm_floor_3()       { assert_eq!(normalize("3樓"),     "三樓"); }
+    #[test] fn norm_floor_12()      { assert_eq!(normalize("12樓"),    "十二樓"); }
+    #[test] fn norm_room()          { assert_eq!(normalize("5室"),     "五室"); }
+    #[test] fn norm_floor_in_sent() { assert_eq!(normalize("住係3樓"), "住係三樓"); }
+
+    // ── normalize: fractions ──────────────────────────────────────────────────
+    #[test] fn norm_frac_half()     { assert_eq!(normalize("1/2"),    "二分之一"); }
+    #[test] fn norm_frac_third()    { assert_eq!(normalize("1/3"),    "三分之一"); }
+    #[test] fn norm_frac_quarter()  { assert_eq!(normalize("3/4"),    "四分之三"); }
+    #[test] fn norm_frac_tenth()    { assert_eq!(normalize("1/10"),   "十分之一"); }
+    #[test] fn norm_frac_two_third(){ assert_eq!(normalize("2/3"),    "三分之二"); }
+    #[test] fn norm_frac_in_sent()  { assert_eq!(normalize("佔1/3面積"), "佔三分之一面積"); }
+
+    // ── normalize: scores ─────────────────────────────────────────────────────
+    #[test] fn norm_score_3_1()     { assert_eq!(normalize("3:1"),    "三比一"); }
+    #[test] fn norm_score_10_0()    { assert_eq!(normalize("10:0"),   "十比零"); }
+    #[test] fn norm_score_2_2()     { assert_eq!(normalize("2:2"),    "二比二"); }
+    #[test] fn norm_score_fw()      { assert_eq!(normalize("3：1"),   "三比一"); }  // full-width colon
+    #[test] fn norm_score_in_sent() { assert_eq!(normalize("結果3:1"), "結果三比一"); }
 
     // ── punc_norm ─────────────────────────────────────────────────────────────
     #[test] fn pn_quotebrackets()  { assert_eq!(punc_norm("「你好」"),         "你好"); }

@@ -37,6 +37,10 @@
 唓	ce1
 哦	o3
 囉囉	lo3 lo3
+# ── Multi-char phrase fixes (fraction reading of 分) ──────────────────────────
+# 分之 in fraction context is fan6 (part/portion), not fan1 (minute).
+# Adding as word-level override so M分之N segments correctly.
+分之	fan6 zi1
 吖	aa1
 吓	haa4
 喱	lei4
