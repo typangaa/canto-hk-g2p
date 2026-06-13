@@ -151,9 +151,11 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
                 if not word or not jyutping:
                     continue
 
-                weight = _parse_weight(parts[2]) if len(parts) >= 3 else -1
+                # No explicit weight → primary reading; must beat any N% entry.
+                _NO_WEIGHT = 10000
+                weight = _parse_weight(parts[2]) if len(parts) >= 3 else _NO_WEIGHT
 
-                # Within-file: keep highest weight (first occurrence if all weights -1)
+                # Within-file: keep highest weight (first occurrence wins on tie)
                 if word not in file_best:
                     file_best[word] = (jyutping, weight)
                     file_entries += 1

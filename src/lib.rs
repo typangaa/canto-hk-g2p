@@ -5,6 +5,7 @@ mod normalizer;
 mod segment;
 mod g2p;
 mod pipeline;
+pub mod dict;
 
 pub use pipeline::Pipeline;
 
