@@ -1,0 +1,26 @@
+[build-system]
+requires = ["maturin>=1.4,<2"]
+build-backend = "maturin"
+
+[project]
+name = "canto-g2p"
+version = "0.1.0"
+description = "Fast Cantonese text-to-phoneme (G2P) converter — Jyutping with tone numbers"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.8"
+keywords = ["cantonese", "g2p", "jyutping", "tts", "nlp"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Text Processing :: Linguistic",
+    "License :: OSI Approved :: Apache Software License",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "maturin>=1.4"]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "canto_g2p._canto_g2p"

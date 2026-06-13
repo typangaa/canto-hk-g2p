@@ -1,0 +1,9 @@
+target/
+*.so
+*.pyd
+*.egg-info/
+dist/
+__pycache__/
+.pytest_cache/
+*.pyc
+data/*.bin

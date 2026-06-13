@@ -1,0 +1,26 @@
+[package]
+name = "canto-g2p"
+version = "0.1.0"
+edition = "2021"
+description = "Fast Cantonese text-to-phoneme (G2P) converter — Jyutping with tone numbers"
+license = "Apache-2.0"
+repository = "https://github.com/typangaa/canto-g2p"
+keywords = ["cantonese", "g2p", "jyutping", "tts", "nlp"]
+categories = ["text-processing"]
+
+[lib]
+name = "canto_g2p"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.24", features = ["extension-module"] }
+memmap2 = "0.9"
+rayon = "1.10"
+
+[dev-dependencies]
+# nothing yet
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

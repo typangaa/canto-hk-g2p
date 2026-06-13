@@ -1,0 +1,27 @@
+canto-g2p
+Copyright 2026 canto-g2p contributors
+
+Licensed under the Apache License, Version 2.0.
+
+---
+
+This product bundles data from the following third-party sources:
+
+1. rime-cantonese
+   Source:  https://github.com/rime/rime-cantonese
+   License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+   Files:   jyut6ping3.dict.yaml, jyut6ping3.chars.dict.yaml,
+            jyut6ping3.words.dict.yaml, jyut6ping3.phrase.dict.yaml
+            (the jyut6ping3.maps.dict.yaml file is NOT included — it
+            carries ODbL v1.0 which is incompatible with this product's
+            permissive license stack)
+   Credit:  CanCLID contributors (https://github.com/CanCLID)
+
+2. Unicode / Unihan Database
+   Source:  https://unicode.org/charts/unihan.html  (field: kCantonese)
+   License: Unicode License v3 — https://www.unicode.org/license.txt
+   Credit:  Unicode, Inc.
+
+3. Hand-curated HK colloquial character list
+   Source:  canto-g2p project (data/oral_hk.tsv)
+   License: Apache-2.0 (same as this product)
