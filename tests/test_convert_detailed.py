@@ -1,5 +1,5 @@
 import pytest
-from canto_g2p import Pipeline
+from canto_hk_g2p import Pipeline
 
 
 @pytest.fixture(scope="module")
@@ -70,13 +70,13 @@ def test_pure_cantonese_negation(p):
 
 # ── English passthrough ───────────────────────────────────────────────────────
 
-def test_english_loanword_hello(p):
-    # "hello" is a Cantonese loanword in the dict → haa1 lou2
+def test_english_passthrough_hello(p):
+    # Latin tokens pass through unchanged — dict is never consulted for non-CJK
     r = p.convert_detailed("hello")
     assert len(r) == 1
     token, jp, lang = r[0]
     assert token == "hello"
-    assert jp == "haa1 lou2"
+    assert jp == "hello"
     assert lang == "en"
 
 

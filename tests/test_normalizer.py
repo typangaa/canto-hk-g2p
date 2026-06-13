@@ -1,5 +1,5 @@
 import pytest
-from canto_g2p import Pipeline
+from canto_hk_g2p import Pipeline
 
 
 @pytest.fixture(scope="module")

@@ -44,10 +44,19 @@ impl PyPipeline {
     pub fn convert_detailed(&self, text: &str) -> Vec<(String, String, String)> {
         self.inner.convert_detailed(text)
     }
+
+    /// Create a Pipeline loading dict files from an explicit directory path.
+    /// Use this when the working directory is not the canto-g2p project root.
+    #[staticmethod]
+    pub fn from_dir(dir: &str) -> PyResult<Self> {
+        pipeline::Pipeline::from_dir(std::path::Path::new(dir))
+            .map(|inner| PyPipeline { inner })
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
 }
 
 #[pymodule]
-fn _canto_g2p(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _canto_hk_g2p(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyPipeline>()?;
     Ok(())
 }

@@ -3,7 +3,7 @@ requires = ["maturin>=1.4,<2"]
 build-backend = "maturin"
 
 [project]
-name = "canto-g2p"
+name = "canto-hk-g2p"
 version = "0.1.0"
 description = "Fast Cantonese text-to-phoneme (G2P) converter — Jyutping with tone numbers"
 readme = "README.md"
@@ -28,9 +28,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/typangaa/canto-g2p"
-Repository = "https://github.com/typangaa/canto-g2p"
-"Bug Tracker" = "https://github.com/typangaa/canto-g2p/issues"
+Homepage = "https://github.com/typangaa/canto-hk-g2p"
+Repository = "https://github.com/typangaa/canto-hk-g2p"
+"Bug Tracker" = "https://github.com/typangaa/canto-hk-g2p/issues"
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "maturin>=1.4"]
@@ -41,4 +41,4 @@ testpaths = ["tests"]
 [tool.maturin]
 features = ["pyo3/extension-module"]
 python-source = "python"
-module-name = "canto_g2p._canto_g2p"
+module-name = "canto_hk_g2p._canto_hk_g2p"

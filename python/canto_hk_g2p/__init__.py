@@ -1,4 +1,4 @@
-from ._canto_g2p import PyPipeline as _PyPipeline
+from ._canto_hk_g2p import PyPipeline as _PyPipeline
 
 __all__ = ["Pipeline"]
 __version__ = "0.1.0"
@@ -12,7 +12,7 @@ class Pipeline:
 
     Example::
 
-        from canto_g2p import Pipeline
+        from canto_hk_g2p import Pipeline
         p = Pipeline()
         p.convert("你好嘅，I love Hong Kong")
         # → "nei5 hou2 ge3 , I love hoeng1 gong2"
@@ -24,7 +24,7 @@ class Pipeline:
         # → ["hoeng1 gong2", "ngan4 hong4"]
 
         p.convert_detailed("香港 hello")
-        # → [("香港", "hoeng1 gong2", "yue"), ("hello", "haa1 lou2", "en")]
+        # → [("香港", "hoeng1 gong2", "yue"), ("hello", "hello", "en")]
     """
 
     def __init__(self) -> None:
@@ -66,13 +66,15 @@ class Pipeline:
         Returns:
             List of ``(token, jyutping, lang)`` tuples, one per token.
             ``lang`` is one of:
+
               - ``"yue"``   — Cantonese CJK token
-              - ``"en"``    — Latin/English token
+              - ``"en"``    — Latin/English token (jyutping == token, passthrough)
               - ``"punct"`` — punctuation or other symbol
 
         Example::
 
             p.convert_detailed("香港 hello")
-            # → [("香港", "hoeng1 gong2", "yue"), ("hello", "haa1 lou2", "en")]
+            # → [("香港", "hoeng1 gong2", "yue"), ("hello", "hello", "en")]
         """
         return self._inner.convert_detailed(text)
+

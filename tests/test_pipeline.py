@@ -5,7 +5,7 @@ Run from repo root:  pytest tests/ -v
 The data/ dir must exist (run python3 scripts/build_dict.py first).
 """
 import pytest
-from canto_g2p import Pipeline
+from canto_hk_g2p import Pipeline
 
 
 @pytest.fixture(scope="module")
@@ -44,7 +44,7 @@ def test_polyphone_ngaan_hong4(p):
 # ── English passthrough (v1: Latin tokens unchanged) ────────────────────────
 
 def test_english_passthrough_single(p):
-    assert p.convert("hello") == "haa1 lou2"  # Cantonese loanword in dict
+    assert p.convert("hello") == "hello"  # Latin tokens pass through, never touch dict
 
 
 def test_english_pure_ascii_phrase(p):

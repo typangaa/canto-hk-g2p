@@ -15,22 +15,22 @@ fn is_cjk(s: &str) -> bool {
 /// Convert a single token to its Jyutping representation.
 ///
 /// Lookup order:
-///   1. word_dict exact match  (catches multi-char words + polyphone resolution)
-///   2. char_dict per-character fallback  (single-char OOV)
-///   3. English passthrough (non-CJK)
+///   1. Non-CJK → passthrough immediately (Latin, punctuation, digits never touch dict)
+///   2. word_dict exact match  (catches multi-char words + polyphone resolution)
+///   3. char_dict per-character fallback  (single-char OOV)
 pub fn token_to_jyutping<'a>(
     token: &str,
     word_dict: &'a Dict,
     char_dict: &'a Dict,
 ) -> String {
-    // 1. Exact word lookup
-    if let Some(jp) = word_dict.lookup(token) {
-        return jp.to_owned();
-    }
-
-    // 2. Non-CJK → passthrough (English, punctuation, digits)
+    // 1. Non-CJK → passthrough (English, punctuation, digits)
     if !is_cjk(token) {
         return token.to_owned();
+    }
+
+    // 2. Exact word lookup (CJK tokens only)
+    if let Some(jp) = word_dict.lookup(token) {
+        return jp.to_owned();
     }
 
     // 3. CJK char-by-char fallback via char_dict
