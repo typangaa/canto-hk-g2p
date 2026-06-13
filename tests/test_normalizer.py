@@ -128,3 +128,137 @@ def test_mixed_date_in_sentence(p):
     assert "jyut6" in result
     assert "sap6" in result
     assert "saam1" in result
+
+
+# ── v1.2: decimal numbers ─────────────────────────────────────────────────────
+
+def test_decimal_plain(p):
+    result = p.convert("3.14")
+    assert "saam1" in result   # 三
+    assert "dim2" in result or "jat6" in result  # 點一四 (點 → dim2)
+
+
+def test_decimal_percent(p):
+    result = p.convert("50.5%")
+    assert "baak3" in result   # 百
+    assert "fan6" in result    # 分
+    assert "zi1" in result     # 之
+    assert "ng5" in result     # 五
+    assert "sap6" in result    # 十
+
+
+# ── v1.2: measurement units ───────────────────────────────────────────────────
+
+def test_unit_kmh(p):
+    result = p.convert("速度係120km/h")
+    assert "jat1" in result    # 一百
+    assert "baak3" in result
+    assert "ji6" in result     # 二十
+    assert "sap6" in result
+    assert "gung1" in result   # 公里每小時
+    assert "lei5" in result
+    assert "mui5" in result
+    assert "siu2" in result or "siu6" in result  # 小時
+
+
+def test_unit_celsius(p):
+    result = p.convert("氣溫36.5°C")
+    assert "saam1" in result   # 三十六 → 三
+    assert "luk6" in result    # 六
+    assert "sip3" in result or "syut3" in result or "sip" in result  # 攝氏
+    assert "dou6" in result    # 度
+
+
+def test_unit_celsius_simple(p):
+    # 36°C (integer)
+    result = p.convert("36°C")
+    assert "saam1" in result
+    assert "luk6" in result
+
+
+def test_unit_kg(p):
+    result = p.convert("重量係75kg")
+    assert "cat1" in result    # 七十五
+    assert "sap6" in result
+    assert "ng5" in result
+    assert "gung1" in result   # 公斤
+    assert "gan1" in result
+
+
+def test_unit_km(p):
+    result = p.convert("100km")
+    assert "jat1" in result
+    assert "baak3" in result
+    assert "gung1" in result   # 公
+    assert "lei5" in result    # 里
+
+
+def test_unit_ml(p):
+    result = p.convert("250ml")
+    assert "ji6" in result or "leung5" in result   # 二百五十
+    assert "baak3" in result
+    assert "hou4" in result    # 毫
+    assert "sing1" in result   # 升
+
+
+def test_unit_m2(p):
+    result = p.convert("3m²")
+    assert "saam1" in result   # 三
+    assert "ping4" in result   # 平
+    assert "fong1" in result   # 方
+    assert "mai5" in result    # 米
+
+
+def test_unit_space_before(p):
+    # optional space between number and unit
+    result = p.convert("120 km/h")
+    assert "gung1" in result
+    assert "lei5" in result
+
+
+# ── v1.2: currency ────────────────────────────────────────────────────────────
+
+def test_currency_usd(p):
+    result = p.convert("USD100")
+    assert "jat1" in result
+    assert "baak3" in result
+    assert "mei5" in result    # 美
+    assert "jyun4" in result   # 元
+
+
+def test_currency_eur(p):
+    result = p.convert("EUR200")
+    assert "ji6" in result
+    assert "baak3" in result
+    assert "au1" in result or "ngau1" in result or "au" in result  # 歐
+
+
+def test_currency_yen_symbol(p):
+    result = p.convert("¥500")
+    assert "ng5" in result
+    assert "baak3" in result
+    assert "jat6" in result    # 日
+    assert "jyun4" in result   # 圓
+
+
+def test_currency_rmb_symbol(p):
+    result = p.convert("￥200")
+    assert "ji6" in result
+    assert "baak3" in result
+    assert "jan4" in result    # 人
+    assert "man4" in result    # 民
+
+
+def test_currency_gbp_symbol(p):
+    result = p.convert("£80")
+    assert "baat3" in result
+    assert "sap6" in result
+    assert "jing1" in result   # 英
+    assert "bong2" in result   # 鎊
+
+
+def test_currency_usd_space(p):
+    # USD with space before digits
+    result = p.convert("USD 100")
+    assert "mei5" in result
+    assert "jyun4" in result
