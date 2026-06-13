@@ -18,9 +18,10 @@ pub struct PyPipeline {
 #[pymethods]
 impl PyPipeline {
     #[new]
-    pub fn new() -> PyResult<Self> {
+    #[pyo3(signature = (punc_norm=true))]
+    pub fn new(punc_norm: bool) -> PyResult<Self> {
         Ok(PyPipeline {
-            inner: pipeline::Pipeline::new(),
+            inner: pipeline::Pipeline::new_with_opts(punc_norm),
         })
     }
 

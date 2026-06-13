@@ -30,11 +30,14 @@ The library is a standalone open-source deliverable — Cantonese TTS pre-proces
 
 - **All-ASCII Jyutping output** with LSHK tone numbers (`nei5 hou2 ge3`)
 - **English code-switching** — the only Cantonese G2P tool that handles mixed HK text; English tokens pass through unchanged (`佢 send 咗 email 俾我` → `keoi5 send zo2 email bei2 ngo5`)
+- **Punctuation normalisation** (`punc_norm=True` by default) — converts exotic punctuation to TTS-friendly equivalents before G2P: `「」《》` removed, `…` → `。`, `——` → `，`, `·` → space, `、` → `，`
 - **Text normalization** — Arabic and full-width digits expanded to Cantonese spoken form:
   - Year: `2026年` → `ji6 ling4 ji6 luk6 nin4`
   - Date: `6月13日` → `luk6 jyut6 sap6 saam1 jat6`
-  - Percentage: `50%` → `baak3 fan6 zi1 ng5 sap6`
-  - Currency: `HK$100` → `jat1 baak3 jyun4`
+  - Percentage: `50%` → `baak3 fan6 zi1 ng5 sap6`; decimal `50.5%` → `baak3 fan6 zi1 ng5 sap6 dim2 ng5`
+  - Currency symbols: `HK$100` → `jat1 baak3 jyun4`; `¥500` → `ng5 baak3 jat6 jyun4`; `€200` → `ji6 baak3 au1 jyun4`
+  - Currency codes: `USD100` → `jat1 baak3 mei5 jyun4`; `EUR 200` → `ji6 baak3 au1 jyun4`
+  - Measurement units: `120km/h` → 一百二十公里每小時; `36.5°C` → 三十六點五攝氏度; `75kg` → 七十五公斤
   - Time: `下午3時15分` → Cantonese spoken time
   - Phone numbers: digit-by-digit expansion
 - **Polyphone disambiguation** via longest-match word-level segmentation (~85% accuracy)
@@ -71,6 +74,10 @@ p.convert("你好嘅")
 p.convert("你好嘅，I love Hong Kong")
 # → "nei5 hou2 ge3 ， I love Hong Kong"
 
+# Punctuation normalisation (default on)
+p.convert("《天氣之子》——一個故事")
+# → "tin1 hei3 zi1 zi2 ， jat1 go3 gu3 si6"
+
 # Number and date normalization
 p.convert("2026年6月13日")
 # → "ji6 ling4 ji6 luk6 nin4 luk6 jyut6 sap6 saam1 jat6"
@@ -95,12 +102,17 @@ p.convert_detailed("香港 hello")
 
 ## API reference
 
-### `Pipeline()`
+### `Pipeline(*, punc_norm=True)`
 
 Loads the binary pronunciation dictionaries from the bundled `data/` directory. The pipeline object is reusable and thread-safe for batch calls.
 
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `punc_norm` | `bool` | `True` | Enable punctuation normalisation. Converts `「」《》` (removed), `…`→`。`, `——`→`，`, `·`→space, `、`→`，` before G2P lookup. Set to `False` to disable. |
+
 ```python
-p = Pipeline()
+p = Pipeline()                   # punc_norm on (default)
+p2 = Pipeline(punc_norm=False)   # raw punctuation passthrough
 ```
 
 ---
@@ -187,15 +199,18 @@ p.convert_detailed("")
 | `6月13日` | `luk6 jyut6 sap6 saam1 jat6` | Date normalizer |
 | `50%` | `baak3 fan6 zi1 ng5 sap6` | Percentage normalizer |
 | `HK$100` | `jat1 baak3 jyun4` | Currency normalizer |
+| `USD100` | `jat1 baak3 mei5 jyun4` | Currency code normalizer |
+| `¥500` | `ng5 baak3 jat6 jyun4` | Currency symbol normalizer (¥ → 日圓) |
+| `120km/h` | `jat1 baak3 ji6 sap6 gung1 lei5 mui5 siu2 si4` | Unit normalizer |
+| `36.5°C` | `saam1 sap6 luk6 dim2 ng5 sip3 si6 dou6` | Decimal + unit normalizer |
 | `hello` | `hello` | Latin passthrough — not in Cantonese phoneme space |
 | `send` | `send` | Latin passthrough — English token in HK code-switching |
 | `佢send咗email俾我` | `keoi5 send zo2 email bei2 ngo5` | Full code-switch sentence |
 
-### Known limitations (v1)
+### Known limitations
 
 - **Residual polyphones**: Word-boundary segmentation resolves approximately 85% of polyphone cases. Single-character polyphones that cannot be disambiguated by context (e.g. 好 as `hou2` greeting vs. `hou3` adverb) fall back to the most-frequent reading in the dictionary.
 - **Tone sandhi (變調)**: Citation tones only — v1 does not model tone sandhi. This is deferred to a future release.
-- **Unit abbreviations**: Abbreviations such as `km`, `°C`, `kg` are not yet expanded to Cantonese spoken form. Planned for v1.2.
 - **No neural polyphone tier**: The current segmentation-based approach covers most cases. A BERT-based polyphone layer (trainable on HKCanCor CC-BY) is on the roadmap but not included in v1.
 
 ---
@@ -276,7 +291,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 92 tests should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, number/date normalization, batch processing, and `convert_detailed()` output structure.
+All 184 tests should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency normalization, batch processing, and `convert_detailed()` output structure.
 
 ---
 

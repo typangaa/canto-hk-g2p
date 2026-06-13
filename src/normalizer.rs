@@ -17,6 +17,110 @@
 ///   7+ digit run       → digits-to-chars (phone number)
 ///   else               → cardinal(N)
 
+/// Punctuation normaliser — run BEFORE `normalize()` in the pipeline.
+///
+/// Transforms exotic / TTS-unfriendly punctuation into plain Cantonese
+/// equivalents that the G2P lookup can handle cleanly:
+///
+/// | Input | Output | Notes |
+/// |---|---|---|
+/// | `「」『』【】《》〈〉〔〕` | (removed) | Quotation / bracket marks |
+/// | `""''` | (removed) | Curly quotes |
+/// | `…` / `……` / `...` | `。` | Ellipsis → full stop |
+/// | `——` / `—` / `–` | `，` | Em/en dash → comma pause |
+/// | `--` | `，` | ASCII double-hyphen → comma pause |
+/// | `·` `・` `•` | ` ` | Middle dot → space |
+/// | `～` `〜` | ` ` | Wave dash → space |
+/// | `、` | `，` | Enumeration comma → comma |
+/// | `※★☆□■△▲▽▼○●◎◆◇` | (removed) | Decorative symbols |
+/// | Multiple spaces | single space | Collapse whitespace |
+pub fn punc_norm(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let mut out = String::with_capacity(n);
+    let mut i = 0;
+    let mut last_space = false;
+
+    while i < n {
+        let c = chars[i];
+        match c {
+            // Quotation / bracket marks — remove
+            '「' | '」' | '『' | '』' |
+            '【' | '】' | '《' | '》' | '〈' | '〉' | '〔' | '〕' |
+            '\u{201C}' | '\u{201D}' | '\u{2018}' | '\u{2019}' => {
+                last_space = false;
+                i += 1;
+            }
+            // Ellipsis → full stop (consume consecutive)
+            '…' => {
+                while i + 1 < n && chars[i + 1] == '…' { i += 1; }
+                out.push('。');
+                last_space = false;
+                i += 1;
+            }
+            // ASCII triple-dot → full stop (consume all trailing dots)
+            '.' if i + 2 < n && chars[i + 1] == '.' && chars[i + 2] == '.' => {
+                while i + 1 < n && chars[i + 1] == '.' { i += 1; }
+                out.push('。');
+                last_space = false;
+                i += 1;
+            }
+            // Em dash (single or paired ——) → comma pause
+            '—' => {
+                if i + 1 < n && chars[i + 1] == '—' { i += 1; }
+                out.push('，');
+                last_space = false;
+                i += 1;
+            }
+            // En dash → comma pause
+            '–' => {
+                out.push('，');
+                last_space = false;
+                i += 1;
+            }
+            // Double hyphen → comma pause; single hyphen kept (units: km/h, dates)
+            '-' if i + 1 < n && chars[i + 1] == '-' => {
+                i += 2;
+                out.push('，');
+                last_space = false;
+            }
+            // Middle dots → space
+            '·' | '・' | '•' | '\u{2027}' => {
+                if !last_space { out.push(' '); last_space = true; }
+                i += 1;
+            }
+            // Wave dash → space
+            '～' | '〜' => {
+                if !last_space { out.push(' '); last_space = true; }
+                i += 1;
+            }
+            // Enumeration comma → full-width comma
+            '、' => {
+                out.push('，');
+                last_space = false;
+                i += 1;
+            }
+            // Decorative symbols → remove
+            '※' | '★' | '☆' | '□' | '■' | '△' | '▲' | '▽' | '▼' |
+            '○' | '●' | '◎' | '◆' | '◇' => {
+                last_space = false;
+                i += 1;
+            }
+            // Whitespace — collapse consecutive runs
+            ' ' | '\t' => {
+                if !last_space { out.push(' '); last_space = true; }
+                i += 1;
+            }
+            _ => {
+                out.push(c);
+                last_space = false;
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
 pub fn normalize(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
@@ -529,4 +633,31 @@ mod tests {
     #[test] fn norm_gbp_sym(){ assert_eq!(normalize("£80"),     "八十英鎊"); }
     #[test] fn norm_rmb_sym(){ assert_eq!(normalize("￥200"),   "二百人民幣"); }
     #[test] fn norm_usd_sp() { assert_eq!(normalize("USD 100"), "一百美元"); }
+
+    // ── punc_norm ─────────────────────────────────────────────────────────────
+    #[test] fn pn_quotebrackets()  { assert_eq!(punc_norm("「你好」"),         "你好"); }
+    #[test] fn pn_book_title()     { assert_eq!(punc_norm("《天氣之子》"),      "天氣之子"); }
+    #[test] fn pn_square()         { assert_eq!(punc_norm("【重要】"),          "重要"); }
+    #[test] fn pn_curly_quotes()   { assert_eq!(punc_norm("\u{201C}hello\u{201D}"), "hello"); }
+    #[test] fn pn_ellipsis()       { assert_eq!(punc_norm("好吧…"),            "好吧。"); }
+    #[test] fn pn_double_ellipsis(){ assert_eq!(punc_norm("好吧……"),           "好吧。"); }
+    #[test] fn pn_ascii_ellipsis() { assert_eq!(punc_norm("好吧..."),          "好吧。"); }
+    #[test] fn pn_em_dash_pair()   { assert_eq!(punc_norm("一——二"),            "一，二"); }
+    #[test] fn pn_em_dash_single() { assert_eq!(punc_norm("一—二"),             "一，二"); }
+    #[test] fn pn_en_dash()        { assert_eq!(punc_norm("一–二"),             "一，二"); }
+    #[test] fn pn_double_hyphen()  { assert_eq!(punc_norm("一--二"),            "一，二"); }
+    #[test] fn pn_single_hyphen()  { assert_eq!(punc_norm("km-h"),             "km-h"); }
+    #[test] fn pn_middle_dot()     { assert_eq!(punc_norm("奧斯卡·王爾德"),    "奧斯卡 王爾德"); }
+    #[test] fn pn_wave_dash()      { assert_eq!(punc_norm("早～"),              "早 "); }
+    #[test] fn pn_enum_comma()     { assert_eq!(punc_norm("蘋果、橙"),          "蘋果，橙"); }
+    #[test] fn pn_decorative()     { assert_eq!(punc_norm("※注意★"),           "注意"); }
+    #[test] fn pn_multi_space()    { assert_eq!(punc_norm("你  好"),            "你 好"); }
+    #[test] fn pn_passthrough()    { assert_eq!(punc_norm("你好嘅，I love HK"), "你好嘅，I love HK"); }
+    #[test] fn pn_combined()       {
+        // Typical messy TTS input
+        assert_eq!(
+            punc_norm("《天氣之子》——一個關於天氣……的故事"),
+            "天氣之子，一個關於天氣。的故事"
+        );
+    }
 }

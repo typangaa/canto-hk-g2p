@@ -10,12 +10,20 @@ class Pipeline:
     Loads binary dictionaries from data/ at construction. Zero runtime
     dependencies beyond the compiled Rust extension.
 
+    Args:
+        punc_norm: If True (default), run punctuation normalisation before G2P.
+            Converts exotic punctuation (「」《》…——) to plain Cantonese equivalents
+            that produce clean TTS output. Set to False to disable.
+
     Example::
 
         from canto_hk_g2p import Pipeline
         p = Pipeline()
         p.convert("你好嘅，I love Hong Kong")
-        # → "nei5 hou2 ge3 , I love hoeng1 gong2"
+        # → "nei5 hou2 ge3 ， I love Hong Kong"
+
+        p.convert("《天氣之子》——一個故事")
+        # → "tin1 hei3 zi1 zi2 ， jat1 go3 gu3 si6"  (brackets/dash normalised)
 
         p.convert("2026年6月13日")
         # → "ji6 ling4 ji6 luk6 nin4 luk6 jyut6 sap6 saam1 jat6"
@@ -25,10 +33,15 @@ class Pipeline:
 
         p.convert_detailed("香港 hello")
         # → [("香港", "hoeng1 gong2", "yue"), ("hello", "hello", "en")]
+
+        # Disable punctuation normalisation:
+        p2 = Pipeline(punc_norm=False)
+        p2.convert("《天氣》")
+        # → "《 tin1 hei3 》"
     """
 
-    def __init__(self) -> None:
-        self._inner = _PyPipeline()
+    def __init__(self, *, punc_norm: bool = True) -> None:
+        self._inner = _PyPipeline(punc_norm=punc_norm)
 
     def convert(self, text: str) -> str:
         """Convert a single string to space-separated Jyutping.
