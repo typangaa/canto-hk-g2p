@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "canto-hk-g2p"
-version = "0.1.0"
+version = "1.0.0"
 description = "Fast Cantonese text-to-phoneme (G2P) converter — Jyutping with tone numbers"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -35,6 +35,10 @@ Repository = "https://github.com/typangaa/canto-hk-g2p"
 [project.optional-dependencies]
 dev = ["pytest>=7", "maturin>=1.4"]
 
+# PEP 735 dependency groups — used by uv (uv sync --group dev)
+[dependency-groups]
+dev = ["pytest>=7", "maturin>=1.4"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
@@ -42,3 +46,8 @@ testpaths = ["tests"]
 features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "canto_hk_g2p._canto_hk_g2p"
+# Explicitly include generated binary dicts (gitignored but required in the wheel).
+include = [
+    "python/canto_hk_g2p/data/word.bin",
+    "python/canto_hk_g2p/data/char.bin",
+]

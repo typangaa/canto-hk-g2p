@@ -38,7 +38,7 @@ impl Pipeline {
         Self::from_dir_opts(dir, true)
     }
 
-    fn from_dir_opts(dir: &std::path::Path, punc_norm: bool) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_dir_opts(dir: &std::path::Path, punc_norm: bool) -> Result<Self, Box<dyn std::error::Error>> {
         let word_dict = Dict::load(&dir.join("word.bin"))?;
         let char_dict = Dict::load(&dir.join("char.bin"))?;
         Ok(Pipeline { word_dict, char_dict, punc_norm })

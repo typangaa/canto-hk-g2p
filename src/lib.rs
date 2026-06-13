@@ -17,12 +17,21 @@ pub struct PyPipeline {
 
 #[pymethods]
 impl PyPipeline {
+    /// Create a Pipeline.
+    ///
+    /// `data_dir` is set by the Python wrapper to the bundled `data/` directory
+    /// inside the installed package.  When `None`, Rust falls back to `cwd/data/`
+    /// (useful during local development before installing the wheel).
     #[new]
-    #[pyo3(signature = (punc_norm=true))]
-    pub fn new(punc_norm: bool) -> PyResult<Self> {
-        Ok(PyPipeline {
-            inner: pipeline::Pipeline::new_with_opts(punc_norm),
-        })
+    #[pyo3(signature = (punc_norm=true, data_dir=None))]
+    pub fn new(punc_norm: bool, data_dir: Option<&str>) -> PyResult<Self> {
+        let inner = match data_dir {
+            Some(dir) => pipeline::Pipeline::from_dir_opts(
+                std::path::Path::new(dir), punc_norm)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?,
+            None => pipeline::Pipeline::new_with_opts(punc_norm),
+        };
+        Ok(PyPipeline { inner })
     }
 
     /// Convert a single string to Jyutping-annotated output.
@@ -47,10 +56,10 @@ impl PyPipeline {
     }
 
     /// Create a Pipeline loading dict files from an explicit directory path.
-    /// Use this when the working directory is not the canto-g2p project root.
     #[staticmethod]
-    pub fn from_dir(dir: &str) -> PyResult<Self> {
-        pipeline::Pipeline::from_dir(std::path::Path::new(dir))
+    #[pyo3(signature = (dir, punc_norm=true))]
+    pub fn from_dir(dir: &str, punc_norm: bool) -> PyResult<Self> {
+        pipeline::Pipeline::from_dir_opts(std::path::Path::new(dir), punc_norm)
             .map(|inner| PyPipeline { inner })
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }

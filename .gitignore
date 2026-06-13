@@ -9,3 +9,4 @@ __pycache__/
 *.pyc
 data/*.bin
 data/raw/
+python/canto_hk_g2p/data/*.bin

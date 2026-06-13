@@ -53,12 +53,18 @@ The library is a standalone open-source deliverable — Cantonese TTS pre-proces
 
 ## Installation
 
-> **Note:** canto-hk-g2p is not yet published to PyPI. Install from source (see below) or watch the repository for the first release.
-
 ```bash
-# Once published:
+# pip
 pip install canto-hk-g2p
+
+# uv (recommended — faster resolver)
+uv pip install canto-hk-g2p
+
+# uv project
+uv add canto-hk-g2p
 ```
+
+Pre-built wheels are available for Linux (x86\_64, aarch64), macOS (x86\_64, Apple Silicon), and Windows (x86\_64) for Python 3.8–3.12. No Rust toolchain required for end users.
 
 ---
 
@@ -213,7 +219,8 @@ p.convert_detailed("")
 ### Known limitations
 
 - **Residual polyphones**: Word-boundary segmentation resolves approximately 85% of polyphone cases. Single-character polyphones that cannot be disambiguated by context (e.g. 好 as `hou2` greeting vs. `hou3` adverb) fall back to the most-frequent reading in the dictionary.
-- **Tone sandhi (變調)**: Citation tones only — v1 does not model tone sandhi. This is deferred to a future release.
+- **Fraction `十分之`**: Fractions with denominator 十 (e.g. `1/10`) output `fan1` instead of `fan6` because `十分之` is also a common adverb (十分之好 = "extremely good") — the adverb entry in rime-cantonese takes longest-match priority. Other denominators (1/2, 1/3, 3/4, 1/12 …) produce the correct `fan6` reading.
+- **Tone sandhi (變調)**: Citation tones only — tone sandhi is deferred to a future release.
 - **No neural polyphone tier**: The current segmentation-based approach covers most cases. A BERT-based polyphone layer (trainable on HKCanCor CC-BY) is on the roadmap but not included in v1.
 
 ---

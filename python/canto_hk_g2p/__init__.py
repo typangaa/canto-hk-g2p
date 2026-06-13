@@ -1,7 +1,13 @@
+from pathlib import Path
 from ._canto_hk_g2p import PyPipeline as _PyPipeline
 
 __all__ = ["Pipeline"]
-__version__ = "0.1.0"
+__version__ = "1.0.0"  # keep in sync with pyproject.toml
+
+# Bundled data directory (inside the installed package).
+# Falls back to None → Rust uses cwd/data/ (local dev workflow).
+_PACKAGE_DATA = Path(__file__).parent / "data"
+_DATA_DIR: str | None = str(_PACKAGE_DATA) if _PACKAGE_DATA.exists() else None
 
 
 class Pipeline:
@@ -41,7 +47,7 @@ class Pipeline:
     """
 
     def __init__(self, *, punc_norm: bool = True) -> None:
-        self._inner = _PyPipeline(punc_norm=punc_norm)
+        self._inner = _PyPipeline(punc_norm=punc_norm, data_dir=_DATA_DIR)
 
     def convert(self, text: str) -> str:
         """Convert a single string to space-separated Jyutping.

@@ -40,8 +40,11 @@ RIME_FILES: List[Path] = [
 
 UNIHAN_READINGS = RAW_DIR / "unihan" / "Unihan_Readings.txt"
 
-OUT_WORD_BIN = DATA_DIR / "word.bin"
-OUT_CHAR_BIN = DATA_DIR / "char.bin"
+# Output goes into the Python package so maturin bundles them in the wheel.
+# data/ at the repo root is kept as a dev fallback (not tracked in git).
+PKG_DATA_DIR = REPO_ROOT / "python" / "canto_hk_g2p" / "data"
+OUT_WORD_BIN = PKG_DATA_DIR / "word.bin"
+OUT_CHAR_BIN = PKG_DATA_DIR / "char.bin"
 
 # ---------------------------------------------------------------------------
 # Binary format constants
