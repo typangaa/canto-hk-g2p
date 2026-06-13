@@ -38,6 +38,12 @@ impl PyPipeline {
         let results = py.allow_threads(|| self.inner.convert_batch(&inputs));
         Ok(results)
     }
+
+    /// Convert text to a list of (token, jyutping, lang) triples.
+    /// lang is "yue" (Cantonese CJK), "en" (Latin/English), or "punct" (punctuation/symbol).
+    pub fn convert_detailed(&self, text: &str) -> Vec<(String, String, String)> {
+        self.inner.convert_detailed(text)
+    }
 }
 
 #[pymodule]

@@ -49,4 +49,38 @@ impl Pipeline {
     pub fn convert_batch(&self, texts: &[String]) -> Vec<String> {
         texts.par_iter().map(|t| self.convert(t)).collect()
     }
+
+    /// Convert text to structured (token, jyutping, lang) triples.
+    /// lang: "yue" = Cantonese CJK, "en" = Latin/English, "punct" = punctuation/symbol.
+    pub fn convert_detailed(&self, text: &str) -> Vec<(String, String, String)> {
+        if text.is_empty() {
+            return vec![];
+        }
+        let normalized = normalizer::normalize(text);
+        let tokens = segment::segment_owned(&normalized, &self.word_dict);
+        tokens
+            .into_iter()
+            .map(|tok| {
+                let jp = g2p::token_to_jyutping(&tok, &self.word_dict, &self.char_dict);
+                let lang = classify_lang(&tok).to_owned();
+                (tok, jp, lang)
+            })
+            .collect()
+    }
+}
+
+fn classify_lang(token: &str) -> &'static str {
+    if token.chars().any(|c| {
+        matches!(c as u32,
+            0x4E00..=0x9FFF | 0x3400..=0x4DBF | 0x20000..=0x2A6DF | 0xF900..=0xFAFF)
+    }) {
+        return "yue";
+    }
+    if token
+        .chars()
+        .all(|c| matches!(c as u32, 0x41..=0x5A | 0x61..=0x7A | 0x30..=0x39))
+    {
+        return "en";
+    }
+    "punct"
 }
