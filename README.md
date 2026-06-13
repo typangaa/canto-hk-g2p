@@ -11,7 +11,7 @@ from canto_hk_g2p import Pipeline
 
 p = Pipeline()
 p.convert("你好嘅，I love Hong Kong")
-# → "nei5 hou2 ge3 , I love hoeng1 gong2"
+# → "nei5 hou2 ge3 ， I love Hong Kong"
 ```
 
 ---
@@ -69,7 +69,7 @@ p.convert("你好嘅")
 
 # Full sentence with punctuation and English
 p.convert("你好嘅，I love Hong Kong")
-# → "nei5 hou2 ge3 , I love hoeng1 gong2"
+# → "nei5 hou2 ge3 ， I love Hong Kong"
 
 # Number and date normalization
 p.convert("2026年6月13日")
