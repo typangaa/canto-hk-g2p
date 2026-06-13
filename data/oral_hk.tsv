@@ -1,0 +1,65 @@
+# HK colloquial characters — highest-priority overrides for canto-g2p
+# Format: char<TAB>jyutping
+# License: Apache-2.0 (canto-g2p project, hand-curated)
+# These common oral/written Cantonese particles are curated manually to ensure
+# correct colloquial readings, overriding rime-cantonese and Unihan where needed.
+嘅	ge3
+喺	hai2
+咗	zo2
+囉	lo3
+㗎	gaa3
+喎	wo3
+喇	laa3
+咋	zaa3
+哋	dei6
+噉	gam2
+咁	gam3
+咩	me1
+乜	mat1
+啩	gwaa3
+噃	bo3
+囉	lo1
+㗎	gaa1
+嗱	naa4
+俾	bei2
+揾	wan2
+係	hai6
+唔	m4
+冇	mou5
+佢	keoi5
+咪	mai6
+呢	ni1
+嗰	go2
+啲	di1
+嘢	je5
+咦	ji2
+咧	le3
+喂	wai3
+嘖	zaak3
+唓	ce1
+哦	o3
+囉囉	lo3 lo3
+吖	aa1
+吓	haa4
+喱	lei4
+嗯	m4
+喐	juk1
+攞	lo2
+整	zing2
+唸	nim6
+掂	dim6
+搞	gaau2
+嗌	aai3
+搵	wan2
+攬	laam2
+啱	ngaam1
+叻	lek1
+掹	maang1
+撚	lan2
+嗤	ci1
+哂	saai2
+噏	ap1
+喳	zaa1
+囁	zip3
+嗡	ung1
+唞	tau2
