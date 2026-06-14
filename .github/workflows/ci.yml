@@ -5,11 +5,17 @@ on:
     branches: [master, main]
   pull_request:
 
+# Force Node.js 24 for all JS actions (checkout, cache, setup-uv) before
+# the June 16 2026 mandatory migration deadline.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.9", "3.11", "3.12"]
 
@@ -32,6 +38,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache-dependency-glob: "pyproject.toml"
 
       - name: Cache raw data sources
         uses: actions/cache@v4

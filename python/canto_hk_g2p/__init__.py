@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 from ._canto_hk_g2p import PyPipeline as _PyPipeline
 
 __all__ = ["Pipeline"]
@@ -7,7 +8,7 @@ __version__ = "1.0.0"  # keep in sync with pyproject.toml
 # Bundled data directory (inside the installed package).
 # Falls back to None → Rust uses cwd/data/ (local dev workflow).
 _PACKAGE_DATA = Path(__file__).parent / "data"
-_DATA_DIR: str | None = str(_PACKAGE_DATA) if _PACKAGE_DATA.exists() else None
+_DATA_DIR: Optional[str] = str(_PACKAGE_DATA) if _PACKAGE_DATA.exists() else None
 
 
 class Pipeline:
