@@ -5,6 +5,10 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    ignore:
+      # pyo3 minor/major bumps require manual migration — review separately
+      - dependency-name: "pyo3"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
