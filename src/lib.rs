@@ -39,10 +39,7 @@ impl PyPipeline {
     }
 
     /// Convert a list of strings in parallel (Rayon).
-    pub fn convert_batch(
-        &self,
-        texts: &Bound<'_, PyList>,
-    ) -> PyResult<Vec<String>> {
+    pub fn convert_batch(&self, texts: &Bound<'_, PyList>) -> PyResult<Vec<String>> {
         let inputs: Vec<String> = texts
             .iter()
             .map(|item| item.extract::<String>())

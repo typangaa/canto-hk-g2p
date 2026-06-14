@@ -18,11 +18,7 @@ fn is_cjk(s: &str) -> bool {
 ///   1. Non-CJK → passthrough immediately (Latin, punctuation, digits never touch dict)
 ///   2. word_dict exact match  (catches multi-char words + polyphone resolution)
 ///   3. char_dict per-character fallback  (single-char OOV)
-pub fn token_to_jyutping<'a>(
-    token: &str,
-    word_dict: &'a Dict,
-    char_dict: &'a Dict,
-) -> String {
+pub fn token_to_jyutping<'a>(token: &str, word_dict: &'a Dict, char_dict: &'a Dict) -> String {
     // 1. Non-CJK → passthrough (English, punctuation, digits)
     if !is_cjk(token) {
         return token.to_owned();
