@@ -1,22 +1,3 @@
-/// Text normalizer — expands Arabic/full-width digits, dates, years, percent,
-/// measurement units, and currency into Chinese character form before G2P lookup.
-///
-/// Pipeline position: normalize(text) → segment → lookup → jyutping
-///
-/// Rules applied (scan order, first match wins per token):
-///   ¥/€/£/₩/￥ + N    → cardinal(N) + currency name
-///   HK$N / $N          → cardinal(N) + 元
-///   USD/EUR/GBP/… + N  → cardinal(N) + currency name
-///   N<unit>            → cardinal(N) + unit  (km/h→公里每小時, °C→攝氏度, kg→公斤…)
-///   N.M<unit>          → decimal(N.M) + unit
-///   N%                 → 百分之 + cardinal(N)
-///   N.M%               → 百分之 + decimal(N.M)
-///   N年                → digits-to-chars (year, digit-by-digit)
-///   standalone 4-digit 1000–2999 → digits-to-chars (year heuristic)
-///   N月/N日/N號/N時/N點/N分/N秒 → cardinal(N)
-///   7+ digit run       → digits-to-chars (phone number)
-///   else               → cardinal(N)
-
 /// Punctuation normaliser — run BEFORE `normalize()` in the pipeline.
 ///
 /// Transforms exotic / TTS-unfriendly punctuation into plain Cantonese
@@ -45,29 +26,34 @@ pub fn punc_norm(text: &str) -> String {
         let c = chars[i];
         match c {
             // Quotation / bracket marks — remove
-            '「' | '」' | '『' | '』' |
-            '【' | '】' | '《' | '》' | '〈' | '〉' | '〔' | '〕' |
-            '\u{201C}' | '\u{201D}' | '\u{2018}' | '\u{2019}' => {
+            '「' | '」' | '『' | '』' | '【' | '】' | '《' | '》' | '〈' | '〉' | '〔' | '〕'
+            | '\u{201C}' | '\u{201D}' | '\u{2018}' | '\u{2019}' => {
                 last_space = false;
                 i += 1;
             }
             // Ellipsis → full stop (consume consecutive)
             '…' => {
-                while i + 1 < n && chars[i + 1] == '…' { i += 1; }
+                while i + 1 < n && chars[i + 1] == '…' {
+                    i += 1;
+                }
                 out.push('。');
                 last_space = false;
                 i += 1;
             }
             // ASCII triple-dot → full stop (consume all trailing dots)
             '.' if i + 2 < n && chars[i + 1] == '.' && chars[i + 2] == '.' => {
-                while i + 1 < n && chars[i + 1] == '.' { i += 1; }
+                while i + 1 < n && chars[i + 1] == '.' {
+                    i += 1;
+                }
                 out.push('。');
                 last_space = false;
                 i += 1;
             }
             // Em dash (single or paired ——) → comma pause
             '—' => {
-                if i + 1 < n && chars[i + 1] == '—' { i += 1; }
+                if i + 1 < n && chars[i + 1] == '—' {
+                    i += 1;
+                }
                 out.push('，');
                 last_space = false;
                 i += 1;
@@ -86,12 +72,18 @@ pub fn punc_norm(text: &str) -> String {
             }
             // Middle dots → space
             '·' | '・' | '•' | '\u{2027}' => {
-                if !last_space { out.push(' '); last_space = true; }
+                if !last_space {
+                    out.push(' ');
+                    last_space = true;
+                }
                 i += 1;
             }
             // Wave dash → space
             '～' | '〜' => {
-                if !last_space { out.push(' '); last_space = true; }
+                if !last_space {
+                    out.push(' ');
+                    last_space = true;
+                }
                 i += 1;
             }
             // Enumeration comma → full-width comma
@@ -101,14 +93,17 @@ pub fn punc_norm(text: &str) -> String {
                 i += 1;
             }
             // Decorative symbols → remove
-            '※' | '★' | '☆' | '□' | '■' | '△' | '▲' | '▽' | '▼' |
-            '○' | '●' | '◎' | '◆' | '◇' => {
+            '※' | '★' | '☆' | '□' | '■' | '△' | '▲' | '▽' | '▼' | '○' | '●' | '◎' | '◆' | '◇' =>
+            {
                 last_space = false;
                 i += 1;
             }
             // Whitespace — collapse consecutive runs
             ' ' | '\t' => {
-                if !last_space { out.push(' '); last_space = true; }
+                if !last_space {
+                    out.push(' ');
+                    last_space = true;
+                }
                 i += 1;
             }
             _ => {
@@ -121,6 +116,24 @@ pub fn punc_norm(text: &str) -> String {
     out
 }
 
+/// Expands Arabic/full-width digits, dates, years, percent, measurement units,
+/// and currency into Chinese character form before G2P lookup.
+///
+/// Pipeline position: normalize(text) → segment → lookup → jyutping
+///
+/// Rules applied (scan order, first match wins per token):
+///   ¥/€/£/₩/￥ + N    → cardinal(N) + currency name
+///   HK$N / $N          → cardinal(N) + 元
+///   USD/EUR/GBP/… + N  → cardinal(N) + currency name
+///   N<unit>            → cardinal(N) + unit  (km/h→公里每小時, °C→攝氏度, kg→公斤…)
+///   N.M<unit>          → decimal(N.M) + unit
+///   N%                 → 百分之 + cardinal(N)
+///   N.M%               → 百分之 + decimal(N.M)
+///   N年                → digits-to-chars (year, digit-by-digit)
+///   standalone 4-digit 1000–2999 → digits-to-chars (year heuristic)
+///   N月/N日/N號/N時/N點/N分/N秒 → cardinal(N)
+///   7+ digit run       → digits-to-chars (phone number)
+///   else               → cardinal(N)
 pub fn normalize(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
@@ -212,7 +225,9 @@ pub fn normalize(text: &str) -> String {
                     if next == Some('/') && num_str.len() <= 3 {
                         if let Some((denom_str, denom_len)) = scan_number(&chars, j + 1) {
                             let after = chars.get(j + 1 + denom_len);
-                            let is_unit_suffix = after.map(|c: &char| c.is_ascii_alphabetic()).unwrap_or(false);
+                            let is_unit_suffix = after
+                                .map(|c: &char| c.is_ascii_alphabetic())
+                                .unwrap_or(false);
                             if denom_str.len() <= 3 && !is_unit_suffix {
                                 if let (Ok(numer), Ok(denom)) =
                                     (num_str.parse::<u64>(), denom_str.parse::<u64>())
@@ -272,40 +287,40 @@ fn match_unit(chars: &[char], start: usize) -> Option<(&'static str, usize)> {
     static UNITS: &[(&str, &str)] = &[
         // speed (must precede km/m)
         ("km/h", "公里每小時"),
-        ("m/s",  "米每秒"),
-        ("mph",  "英里每小時"),
+        ("m/s", "米每秒"),
+        ("mph", "英里每小時"),
         // area (must precede km/m/cm/mm)
-        ("km²",  "平方公里"),
-        ("cm²",  "平方厘米"),
-        ("mm²",  "平方毫米"),
-        ("m²",   "平方米"),
+        ("km²", "平方公里"),
+        ("cm²", "平方厘米"),
+        ("mm²", "平方毫米"),
+        ("m²", "平方米"),
         // energy/power (must precede kW/W)
-        ("kWh",  "千瓦時"),
-        ("kW",   "千瓦"),
+        ("kWh", "千瓦時"),
+        ("kW", "千瓦"),
         // distance
-        ("km",   "公里"),
-        ("cm",   "厘米"),
-        ("mm",   "毫米"),
+        ("km", "公里"),
+        ("cm", "厘米"),
+        ("mm", "毫米"),
         // mass (must precede g)
-        ("mg",   "毫克"),
-        ("kg",   "公斤"),
+        ("mg", "毫克"),
+        ("kg", "公斤"),
         // volume (must precede L/l)
-        ("mL",   "毫升"),
-        ("ml",   "毫升"),
+        ("mL", "毫升"),
+        ("ml", "毫升"),
         // temperature — two-char °C/°F must precede single-char fallbacks
-        ("°C",   "攝氏度"),
-        ("°F",   "華氏度"),
-        ("℃",   "攝氏度"),   // U+2103
-        ("℉",   "華氏度"),   // U+2109
+        ("°C", "攝氏度"),
+        ("°F", "華氏度"),
+        ("℃", "攝氏度"), // U+2103
+        ("℉", "華氏度"), // U+2109
         // Unicode unit symbols
-        ("㎞",  "公里"),     // U+339E
-        ("㎡",  "平方米"),   // U+33A1
+        ("㎞", "公里"),   // U+339E
+        ("㎡", "平方米"), // U+33A1
         // single-char units (must come last)
-        ("m",    "米"),
-        ("g",    "克"),
-        ("W",    "瓦特"),
-        ("L",    "公升"),
-        ("l",    "公升"),
+        ("m", "米"),
+        ("g", "克"),
+        ("W", "瓦特"),
+        ("L", "公升"),
+        ("l", "公升"),
     ];
     for &(unit, expansion) in UNITS {
         let uc: Vec<char> = unit.chars().collect();
@@ -317,7 +332,11 @@ fn match_unit(chars: &[char], start: usize) -> Option<(&'static str, usize)> {
             continue;
         }
         // Unit must not be followed by an ASCII letter (prevents "kg" matching "kgf")
-        if chars.get(start + len).map(|c| c.is_ascii_alphabetic()).unwrap_or(false) {
+        if chars
+            .get(start + len)
+            .map(|c| c.is_ascii_alphabetic())
+            .unwrap_or(false)
+        {
             continue;
         }
         return Some((expansion, len));
@@ -330,32 +349,35 @@ fn match_unit(chars: &[char], start: usize) -> Option<(&'static str, usize)> {
 /// Match a single-character currency symbol prefix.
 fn match_currency_symbol(chars: &[char], pos: usize) -> Option<(&'static str, usize)> {
     static SYMBOLS: &[(char, &str)] = &[
-        ('€',  "歐元"),    // U+20AC
-        ('£',  "英鎊"),    // U+00A3
-        ('₩',  "韓圓"),    // U+20A9
-        ('￥', "人民幣"),   // U+FFE5 full-width yen → CNY in HK context
-        ('¥',  "日圓"),    // U+00A5 yen sign → JPY in HK context
+        ('€', "歐元"),    // U+20AC
+        ('£', "英鎊"),    // U+00A3
+        ('₩', "韓圓"),    // U+20A9
+        ('￥', "人民幣"), // U+FFE5 full-width yen → CNY in HK context
+        ('¥', "日圓"),    // U+00A5 yen sign → JPY in HK context
     ];
     let c = *chars.get(pos)?;
-    SYMBOLS.iter().find(|&&(sym, _)| c == sym).map(|&(_, exp)| (exp, 1))
+    SYMBOLS
+        .iter()
+        .find(|&&(sym, _)| c == sym)
+        .map(|&(_, exp)| (exp, 1))
 }
 
 /// Match a 3-letter (or longer) ISO currency code prefix (USD, EUR, etc.).
 fn match_currency_code(chars: &[char], pos: usize) -> Option<(&'static str, usize)> {
     static CODES: &[(&str, &str)] = &[
-        ("AUD",  "澳元"),
-        ("CAD",  "加元"),
-        ("CNY",  "人民幣"),
-        ("EUR",  "歐元"),
-        ("GBP",  "英鎊"),
-        ("JPY",  "日圓"),
-        ("KRW",  "韓圓"),
-        ("MYR",  "令吉"),
-        ("RMB",  "人民幣"),
-        ("SGD",  "坡元"),
-        ("THB",  "泰銖"),
-        ("TWD",  "新台幣"),
-        ("USD",  "美元"),
+        ("AUD", "澳元"),
+        ("CAD", "加元"),
+        ("CNY", "人民幣"),
+        ("EUR", "歐元"),
+        ("GBP", "英鎊"),
+        ("JPY", "日圓"),
+        ("KRW", "韓圓"),
+        ("MYR", "令吉"),
+        ("RMB", "人民幣"),
+        ("SGD", "坡元"),
+        ("THB", "泰銖"),
+        ("TWD", "新台幣"),
+        ("USD", "美元"),
     ];
     for &(code, expansion) in CODES {
         let cc: Vec<char> = code.chars().collect();
@@ -367,7 +389,11 @@ fn match_currency_code(chars: &[char], pos: usize) -> Option<(&'static str, usiz
             continue;
         }
         // Code must not be followed by another ASCII letter (prevents "USDT" → USD)
-        if chars.get(pos + len).map(|c| c.is_ascii_alphabetic()).unwrap_or(false) {
+        if chars
+            .get(pos + len)
+            .map(|c| c.is_ascii_alphabetic())
+            .unwrap_or(false)
+        {
             continue;
         }
         return Some((expansion, len));
@@ -458,7 +484,8 @@ fn expand_digits(digits: &str, next: Option<char>) -> String {
         return digits_to_chars(digits);
     }
     // date/time + floor/room/ordinal suffixes → cardinal
-    if matches!(next,
+    if matches!(
+        next,
         Some('月') | Some('日') | Some('號') | Some('時') | Some('點') | Some('分') | Some('秒') |
         // floor / room
         Some('樓') | Some('室') | Some('層') |
@@ -534,7 +561,9 @@ fn cardinal_inner(n: u64, top: bool) -> String {
         let mut s = cardinal_inner(hi, false);
         s.push('億');
         if lo > 0 {
-            if lo < 10_000_000 { s.push('零'); }
+            if lo < 10_000_000 {
+                s.push('零');
+            }
             s.push_str(&cardinal_inner(lo, false));
         }
         return s;
@@ -547,7 +576,9 @@ fn cardinal_inner(n: u64, top: bool) -> String {
         let mut s = cardinal_inner(hi, false);
         s.push('萬');
         if lo > 0 {
-            if lo < 1_000 { s.push('零'); }
+            if lo < 1_000 {
+                s.push('零');
+            }
             s.push_str(&cardinal_inner(lo, false));
         }
         return s;
@@ -559,7 +590,9 @@ fn cardinal_inner(n: u64, top: bool) -> String {
         let rem = n % 1_000;
         let mut s = format!("{}千", D[d]);
         if rem > 0 {
-            if rem < 100 { s.push('零'); }
+            if rem < 100 {
+                s.push('零');
+            }
             s.push_str(&cardinal_inner(rem, false));
         }
         return s;
@@ -571,7 +604,9 @@ fn cardinal_inner(n: u64, top: bool) -> String {
         let rem = n % 100;
         let mut s = format!("{}百", D[d]);
         if rem > 0 {
-            if rem < 10 { s.push('零'); }
+            if rem < 10 {
+                s.push('零');
+            }
             s.push_str(&cardinal_inner(rem, false));
         }
         return s;
@@ -582,9 +617,13 @@ fn cardinal_inner(n: u64, top: bool) -> String {
         let tens = (n / 10) as usize;
         let ones = (n % 10) as usize;
         let mut s = String::new();
-        if tens > 1 || !top { s.push(D[tens]); }
+        if tens > 1 || !top {
+            s.push(D[tens]);
+        }
         s.push('十');
-        if ones > 0 { s.push(D[ones]); }
+        if ones > 0 {
+            s.push(D[ones]);
+        }
         return s;
     }
 
@@ -598,131 +637,447 @@ mod tests {
     use super::*;
 
     // ── cardinal ─────────────────────────────────────────────────────────────
-    #[test] fn card_zero()    { assert_eq!(cardinal(0),      "零"); }
-    #[test] fn card_one()     { assert_eq!(cardinal(1),      "一"); }
-    #[test] fn card_ten()     { assert_eq!(cardinal(10),     "十"); }
-    #[test] fn card_eleven()  { assert_eq!(cardinal(11),     "十一"); }
-    #[test] fn card_twenty()  { assert_eq!(cardinal(20),     "二十"); }
-    #[test] fn card_hundred() { assert_eq!(cardinal(100),    "一百"); }
-    #[test] fn card_110()     { assert_eq!(cardinal(110),    "一百一十"); }
-    #[test] fn card_103()     { assert_eq!(cardinal(103),    "一百零三"); }
-    #[test] fn card_1000()    { assert_eq!(cardinal(1000),   "一千"); }
-    #[test] fn card_1010()    { assert_eq!(cardinal(1010),   "一千零一十"); }
-    #[test] fn card_1001()    { assert_eq!(cardinal(1001),   "一千零一"); }
-    #[test] fn card_1100()    { assert_eq!(cardinal(1100),   "一千一百"); }
-    #[test] fn card_12345()   { assert_eq!(cardinal(12345),  "一萬二千三百四十五"); }
+    #[test]
+    fn card_zero() {
+        assert_eq!(cardinal(0), "零");
+    }
+    #[test]
+    fn card_one() {
+        assert_eq!(cardinal(1), "一");
+    }
+    #[test]
+    fn card_ten() {
+        assert_eq!(cardinal(10), "十");
+    }
+    #[test]
+    fn card_eleven() {
+        assert_eq!(cardinal(11), "十一");
+    }
+    #[test]
+    fn card_twenty() {
+        assert_eq!(cardinal(20), "二十");
+    }
+    #[test]
+    fn card_hundred() {
+        assert_eq!(cardinal(100), "一百");
+    }
+    #[test]
+    fn card_110() {
+        assert_eq!(cardinal(110), "一百一十");
+    }
+    #[test]
+    fn card_103() {
+        assert_eq!(cardinal(103), "一百零三");
+    }
+    #[test]
+    fn card_1000() {
+        assert_eq!(cardinal(1000), "一千");
+    }
+    #[test]
+    fn card_1010() {
+        assert_eq!(cardinal(1010), "一千零一十");
+    }
+    #[test]
+    fn card_1001() {
+        assert_eq!(cardinal(1001), "一千零一");
+    }
+    #[test]
+    fn card_1100() {
+        assert_eq!(cardinal(1100), "一千一百");
+    }
+    #[test]
+    fn card_12345() {
+        assert_eq!(cardinal(12345), "一萬二千三百四十五");
+    }
 
     // ── digits_to_chars ───────────────────────────────────────────────────────
-    #[test] fn dtc_year()     { assert_eq!(digits_to_chars("2026"), "二零二六"); }
-    #[test] fn dtc_1997()     { assert_eq!(digits_to_chars("1997"), "一九九七"); }
+    #[test]
+    fn dtc_year() {
+        assert_eq!(digits_to_chars("2026"), "二零二六");
+    }
+    #[test]
+    fn dtc_1997() {
+        assert_eq!(digits_to_chars("1997"), "一九九七");
+    }
 
     // ── expand_number (decimal) ───────────────────────────────────────────────
-    #[test] fn expand_decimal()      { assert_eq!(expand_number("36.5"),  "三十六點五"); }
-    #[test] fn expand_decimal_zero() { assert_eq!(expand_number("0.5"),   "零點五"); }
-    #[test] fn expand_decimal_two()  { assert_eq!(expand_number("3.14"),  "三點一四"); }
-    #[test] fn expand_integer()      { assert_eq!(expand_number("100"),   "一百"); }
+    #[test]
+    fn expand_decimal() {
+        assert_eq!(expand_number("36.5"), "三十六點五");
+    }
+    #[test]
+    fn expand_decimal_zero() {
+        assert_eq!(expand_number("0.5"), "零點五");
+    }
+    #[test]
+    fn expand_decimal_two() {
+        assert_eq!(expand_number("3.14"), "三點一四");
+    }
+    #[test]
+    fn expand_integer() {
+        assert_eq!(expand_number("100"), "一百");
+    }
 
     // ── normalize: existing rules (regression) ────────────────────────────────
-    #[test] fn norm_year_suffix()  { assert_eq!(normalize("2026年"),    "二零二六年"); }
-    #[test] fn norm_year_standalone() { assert_eq!(normalize("1997"),   "一九九七"); }
-    #[test] fn norm_date()         { assert_eq!(normalize("6月13日"),   "六月十三日"); }
-    #[test] fn norm_date_full()    { assert_eq!(normalize("2026年6月13日"), "二零二六年六月十三日"); }
-    #[test] fn norm_percent()      { assert_eq!(normalize("50%"),        "百分之五十"); }
-    #[test] fn norm_fullwidth()    { assert_eq!(normalize("２０２６年"), "二零二六年"); }
-    #[test] fn norm_phone()        { assert_eq!(normalize("98765432"),   "九八七六五四三二"); }
-    #[test] fn norm_hkd()          { assert_eq!(normalize("HK$100"),     "一百元"); }
-    #[test] fn norm_dollar()       { assert_eq!(normalize("$50"),        "五十元"); }
-    #[test] fn norm_passthrough()  { assert_eq!(normalize("你好嘅"),     "你好嘅"); }
-    #[test] fn norm_mixed()        { assert_eq!(normalize("今日係2026年6月13日"), "今日係二零二六年六月十三日"); }
-    #[test] fn norm_time()         { assert_eq!(normalize("下午3時15分"), "下午三時十五分"); }
-    #[test] fn norm_cardinal_small() { assert_eq!(normalize("有3個人"),  "有三個人"); }
-    #[test] fn norm_month_dec()    { assert_eq!(normalize("12月25日"),   "十二月二十五日"); }
+    #[test]
+    fn norm_year_suffix() {
+        assert_eq!(normalize("2026年"), "二零二六年");
+    }
+    #[test]
+    fn norm_year_standalone() {
+        assert_eq!(normalize("1997"), "一九九七");
+    }
+    #[test]
+    fn norm_date() {
+        assert_eq!(normalize("6月13日"), "六月十三日");
+    }
+    #[test]
+    fn norm_date_full() {
+        assert_eq!(normalize("2026年6月13日"), "二零二六年六月十三日");
+    }
+    #[test]
+    fn norm_percent() {
+        assert_eq!(normalize("50%"), "百分之五十");
+    }
+    #[test]
+    fn norm_fullwidth() {
+        assert_eq!(normalize("２０２６年"), "二零二六年");
+    }
+    #[test]
+    fn norm_phone() {
+        assert_eq!(normalize("98765432"), "九八七六五四三二");
+    }
+    #[test]
+    fn norm_hkd() {
+        assert_eq!(normalize("HK$100"), "一百元");
+    }
+    #[test]
+    fn norm_dollar() {
+        assert_eq!(normalize("$50"), "五十元");
+    }
+    #[test]
+    fn norm_passthrough() {
+        assert_eq!(normalize("你好嘅"), "你好嘅");
+    }
+    #[test]
+    fn norm_mixed() {
+        assert_eq!(
+            normalize("今日係2026年6月13日"),
+            "今日係二零二六年六月十三日"
+        );
+    }
+    #[test]
+    fn norm_time() {
+        assert_eq!(normalize("下午3時15分"), "下午三時十五分");
+    }
+    #[test]
+    fn norm_cardinal_small() {
+        assert_eq!(normalize("有3個人"), "有三個人");
+    }
+    #[test]
+    fn norm_month_dec() {
+        assert_eq!(normalize("12月25日"), "十二月二十五日");
+    }
 
     // ── normalize: decimal numbers ────────────────────────────────────────────
-    #[test] fn norm_decimal_plain()   { assert_eq!(normalize("3.14"),   "三點一四"); }
-    #[test] fn norm_decimal_percent() { assert_eq!(normalize("50.5%"),  "百分之五十點五"); }
-    #[test] fn norm_hkd_decimal()     { assert_eq!(normalize("HK$3.50"), "三點五零元"); }
+    #[test]
+    fn norm_decimal_plain() {
+        assert_eq!(normalize("3.14"), "三點一四");
+    }
+    #[test]
+    fn norm_decimal_percent() {
+        assert_eq!(normalize("50.5%"), "百分之五十點五");
+    }
+    #[test]
+    fn norm_hkd_decimal() {
+        assert_eq!(normalize("HK$3.50"), "三點五零元");
+    }
 
     // ── normalize: measurement units ─────────────────────────────────────────
-    #[test] fn norm_unit_kmh()     { assert_eq!(normalize("120km/h"),   "一百二十公里每小時"); }
-    #[test] fn norm_unit_kmh_sp()  { assert_eq!(normalize("120 km/h"),  "一百二十公里每小時"); }
-    #[test] fn norm_unit_celsius() { assert_eq!(normalize("36.5°C"),    "三十六點五攝氏度"); }
-    #[test] fn norm_unit_cel_int() { assert_eq!(normalize("36°C"),      "三十六攝氏度"); }
-    #[test] fn norm_unit_cel_uni() { assert_eq!(normalize("36.5℃"),    "三十六點五攝氏度"); }
-    #[test] fn norm_unit_fahrenheit() { assert_eq!(normalize("98.6°F"), "九十八點六華氏度"); }
-    #[test] fn norm_unit_kg()      { assert_eq!(normalize("75kg"),      "七十五公斤"); }
-    #[test] fn norm_unit_km()      { assert_eq!(normalize("100km"),     "一百公里"); }
-    #[test] fn norm_unit_cm()      { assert_eq!(normalize("180cm"),     "一百八十厘米"); }
-    #[test] fn norm_unit_m()       { assert_eq!(normalize("1.8m"),      "一點八米"); }
-    #[test] fn norm_unit_m2()      { assert_eq!(normalize("3m²"),       "三平方米"); }
-    #[test] fn norm_unit_ml()      { assert_eq!(normalize("250ml"),     "二百五十毫升"); }
-    #[test] fn norm_unit_litre()   { assert_eq!(normalize("1.5L"),      "一點五公升"); }
-    #[test] fn norm_unit_g()       { assert_eq!(normalize("200g"),      "二百克"); }
-    #[test] fn norm_unit_mg()      { assert_eq!(normalize("500mg"),     "五百毫克"); }
-    #[test] fn norm_unit_kw()      { assert_eq!(normalize("5kW"),       "五千瓦"); }
-    #[test] fn norm_unit_kwh()     { assert_eq!(normalize("100kWh"),    "一百千瓦時"); }
-    #[test] fn norm_unit_mph()     { assert_eq!(normalize("60mph"),     "六十英里每小時"); }
-    #[test] fn norm_unit_ms()      { assert_eq!(normalize("10m/s"),     "十米每秒"); }
-    #[test] fn norm_unit_in_sent() { assert_eq!(normalize("速度係120km/h"), "速度係一百二十公里每小時"); }
-    #[test] fn norm_unit_cel_sent(){ assert_eq!(normalize("氣溫36.5°C"), "氣溫三十六點五攝氏度"); }
+    #[test]
+    fn norm_unit_kmh() {
+        assert_eq!(normalize("120km/h"), "一百二十公里每小時");
+    }
+    #[test]
+    fn norm_unit_kmh_sp() {
+        assert_eq!(normalize("120 km/h"), "一百二十公里每小時");
+    }
+    #[test]
+    fn norm_unit_celsius() {
+        assert_eq!(normalize("36.5°C"), "三十六點五攝氏度");
+    }
+    #[test]
+    fn norm_unit_cel_int() {
+        assert_eq!(normalize("36°C"), "三十六攝氏度");
+    }
+    #[test]
+    fn norm_unit_cel_uni() {
+        assert_eq!(normalize("36.5℃"), "三十六點五攝氏度");
+    }
+    #[test]
+    fn norm_unit_fahrenheit() {
+        assert_eq!(normalize("98.6°F"), "九十八點六華氏度");
+    }
+    #[test]
+    fn norm_unit_kg() {
+        assert_eq!(normalize("75kg"), "七十五公斤");
+    }
+    #[test]
+    fn norm_unit_km() {
+        assert_eq!(normalize("100km"), "一百公里");
+    }
+    #[test]
+    fn norm_unit_cm() {
+        assert_eq!(normalize("180cm"), "一百八十厘米");
+    }
+    #[test]
+    fn norm_unit_m() {
+        assert_eq!(normalize("1.8m"), "一點八米");
+    }
+    #[test]
+    fn norm_unit_m2() {
+        assert_eq!(normalize("3m²"), "三平方米");
+    }
+    #[test]
+    fn norm_unit_ml() {
+        assert_eq!(normalize("250ml"), "二百五十毫升");
+    }
+    #[test]
+    fn norm_unit_litre() {
+        assert_eq!(normalize("1.5L"), "一點五公升");
+    }
+    #[test]
+    fn norm_unit_g() {
+        assert_eq!(normalize("200g"), "二百克");
+    }
+    #[test]
+    fn norm_unit_mg() {
+        assert_eq!(normalize("500mg"), "五百毫克");
+    }
+    #[test]
+    fn norm_unit_kw() {
+        assert_eq!(normalize("5kW"), "五千瓦");
+    }
+    #[test]
+    fn norm_unit_kwh() {
+        assert_eq!(normalize("100kWh"), "一百千瓦時");
+    }
+    #[test]
+    fn norm_unit_mph() {
+        assert_eq!(normalize("60mph"), "六十英里每小時");
+    }
+    #[test]
+    fn norm_unit_ms() {
+        assert_eq!(normalize("10m/s"), "十米每秒");
+    }
+    #[test]
+    fn norm_unit_in_sent() {
+        assert_eq!(normalize("速度係120km/h"), "速度係一百二十公里每小時");
+    }
+    #[test]
+    fn norm_unit_cel_sent() {
+        assert_eq!(normalize("氣溫36.5°C"), "氣溫三十六點五攝氏度");
+    }
 
     // ── normalize: currency ───────────────────────────────────────────────────
-    #[test] fn norm_usd()    { assert_eq!(normalize("USD100"),  "一百美元"); }
-    #[test] fn norm_eur()    { assert_eq!(normalize("EUR200"),  "二百歐元"); }
-    #[test] fn norm_gbp()    { assert_eq!(normalize("GBP50"),   "五十英鎊"); }
-    #[test] fn norm_rmb()    { assert_eq!(normalize("RMB500"),  "五百人民幣"); }
-    #[test] fn norm_yen_sym(){ assert_eq!(normalize("¥500"),    "五百日圓"); }
-    #[test] fn norm_eur_sym(){ assert_eq!(normalize("€100"),    "一百歐元"); }
-    #[test] fn norm_gbp_sym(){ assert_eq!(normalize("£80"),     "八十英鎊"); }
-    #[test] fn norm_rmb_sym(){ assert_eq!(normalize("￥200"),   "二百人民幣"); }
-    #[test] fn norm_usd_sp() { assert_eq!(normalize("USD 100"), "一百美元"); }
+    #[test]
+    fn norm_usd() {
+        assert_eq!(normalize("USD100"), "一百美元");
+    }
+    #[test]
+    fn norm_eur() {
+        assert_eq!(normalize("EUR200"), "二百歐元");
+    }
+    #[test]
+    fn norm_gbp() {
+        assert_eq!(normalize("GBP50"), "五十英鎊");
+    }
+    #[test]
+    fn norm_rmb() {
+        assert_eq!(normalize("RMB500"), "五百人民幣");
+    }
+    #[test]
+    fn norm_yen_sym() {
+        assert_eq!(normalize("¥500"), "五百日圓");
+    }
+    #[test]
+    fn norm_eur_sym() {
+        assert_eq!(normalize("€100"), "一百歐元");
+    }
+    #[test]
+    fn norm_gbp_sym() {
+        assert_eq!(normalize("£80"), "八十英鎊");
+    }
+    #[test]
+    fn norm_rmb_sym() {
+        assert_eq!(normalize("￥200"), "二百人民幣");
+    }
+    #[test]
+    fn norm_usd_sp() {
+        assert_eq!(normalize("USD 100"), "一百美元");
+    }
 
     // ── normalize: ordinal / floor / room ────────────────────────────────────
-    #[test] fn norm_ordinal_3rd()   { assert_eq!(normalize("第3名"),   "第三名"); }
-    #[test] fn norm_ordinal_10th()  { assert_eq!(normalize("第10名"),  "第十名"); }
-    #[test] fn norm_ordinal_pos()   { assert_eq!(normalize("第2位"),   "第二位"); }
-    #[test] fn norm_ordinal_ep()    { assert_eq!(normalize("第3集"),   "第三集"); }
-    #[test] fn norm_ordinal_term()  { assert_eq!(normalize("第12屆"),  "第十二屆"); }
-    #[test] fn norm_floor_3()       { assert_eq!(normalize("3樓"),     "三樓"); }
-    #[test] fn norm_floor_12()      { assert_eq!(normalize("12樓"),    "十二樓"); }
-    #[test] fn norm_room()          { assert_eq!(normalize("5室"),     "五室"); }
-    #[test] fn norm_floor_in_sent() { assert_eq!(normalize("住係3樓"), "住係三樓"); }
+    #[test]
+    fn norm_ordinal_3rd() {
+        assert_eq!(normalize("第3名"), "第三名");
+    }
+    #[test]
+    fn norm_ordinal_10th() {
+        assert_eq!(normalize("第10名"), "第十名");
+    }
+    #[test]
+    fn norm_ordinal_pos() {
+        assert_eq!(normalize("第2位"), "第二位");
+    }
+    #[test]
+    fn norm_ordinal_ep() {
+        assert_eq!(normalize("第3集"), "第三集");
+    }
+    #[test]
+    fn norm_ordinal_term() {
+        assert_eq!(normalize("第12屆"), "第十二屆");
+    }
+    #[test]
+    fn norm_floor_3() {
+        assert_eq!(normalize("3樓"), "三樓");
+    }
+    #[test]
+    fn norm_floor_12() {
+        assert_eq!(normalize("12樓"), "十二樓");
+    }
+    #[test]
+    fn norm_room() {
+        assert_eq!(normalize("5室"), "五室");
+    }
+    #[test]
+    fn norm_floor_in_sent() {
+        assert_eq!(normalize("住係3樓"), "住係三樓");
+    }
 
     // ── normalize: fractions ──────────────────────────────────────────────────
-    #[test] fn norm_frac_half()     { assert_eq!(normalize("1/2"),    "二分之一"); }
-    #[test] fn norm_frac_third()    { assert_eq!(normalize("1/3"),    "三分之一"); }
-    #[test] fn norm_frac_quarter()  { assert_eq!(normalize("3/4"),    "四分之三"); }
-    #[test] fn norm_frac_tenth()    { assert_eq!(normalize("1/10"),   "十分之一"); }
-    #[test] fn norm_frac_two_third(){ assert_eq!(normalize("2/3"),    "三分之二"); }
-    #[test] fn norm_frac_in_sent()  { assert_eq!(normalize("佔1/3面積"), "佔三分之一面積"); }
+    #[test]
+    fn norm_frac_half() {
+        assert_eq!(normalize("1/2"), "二分之一");
+    }
+    #[test]
+    fn norm_frac_third() {
+        assert_eq!(normalize("1/3"), "三分之一");
+    }
+    #[test]
+    fn norm_frac_quarter() {
+        assert_eq!(normalize("3/4"), "四分之三");
+    }
+    #[test]
+    fn norm_frac_tenth() {
+        assert_eq!(normalize("1/10"), "十分之一");
+    }
+    #[test]
+    fn norm_frac_two_third() {
+        assert_eq!(normalize("2/3"), "三分之二");
+    }
+    #[test]
+    fn norm_frac_in_sent() {
+        assert_eq!(normalize("佔1/3面積"), "佔三分之一面積");
+    }
 
     // ── normalize: scores ─────────────────────────────────────────────────────
-    #[test] fn norm_score_3_1()     { assert_eq!(normalize("3:1"),    "三比一"); }
-    #[test] fn norm_score_10_0()    { assert_eq!(normalize("10:0"),   "十比零"); }
-    #[test] fn norm_score_2_2()     { assert_eq!(normalize("2:2"),    "二比二"); }
-    #[test] fn norm_score_fw()      { assert_eq!(normalize("3：1"),   "三比一"); }  // full-width colon
-    #[test] fn norm_score_in_sent() { assert_eq!(normalize("結果3:1"), "結果三比一"); }
+    #[test]
+    fn norm_score_3_1() {
+        assert_eq!(normalize("3:1"), "三比一");
+    }
+    #[test]
+    fn norm_score_10_0() {
+        assert_eq!(normalize("10:0"), "十比零");
+    }
+    #[test]
+    fn norm_score_2_2() {
+        assert_eq!(normalize("2:2"), "二比二");
+    }
+    #[test]
+    fn norm_score_fw() {
+        assert_eq!(normalize("3：1"), "三比一");
+    } // full-width colon
+    #[test]
+    fn norm_score_in_sent() {
+        assert_eq!(normalize("結果3:1"), "結果三比一");
+    }
 
     // ── punc_norm ─────────────────────────────────────────────────────────────
-    #[test] fn pn_quotebrackets()  { assert_eq!(punc_norm("「你好」"),         "你好"); }
-    #[test] fn pn_book_title()     { assert_eq!(punc_norm("《天氣之子》"),      "天氣之子"); }
-    #[test] fn pn_square()         { assert_eq!(punc_norm("【重要】"),          "重要"); }
-    #[test] fn pn_curly_quotes()   { assert_eq!(punc_norm("\u{201C}hello\u{201D}"), "hello"); }
-    #[test] fn pn_ellipsis()       { assert_eq!(punc_norm("好吧…"),            "好吧。"); }
-    #[test] fn pn_double_ellipsis(){ assert_eq!(punc_norm("好吧……"),           "好吧。"); }
-    #[test] fn pn_ascii_ellipsis() { assert_eq!(punc_norm("好吧..."),          "好吧。"); }
-    #[test] fn pn_em_dash_pair()   { assert_eq!(punc_norm("一——二"),            "一，二"); }
-    #[test] fn pn_em_dash_single() { assert_eq!(punc_norm("一—二"),             "一，二"); }
-    #[test] fn pn_en_dash()        { assert_eq!(punc_norm("一–二"),             "一，二"); }
-    #[test] fn pn_double_hyphen()  { assert_eq!(punc_norm("一--二"),            "一，二"); }
-    #[test] fn pn_single_hyphen()  { assert_eq!(punc_norm("km-h"),             "km-h"); }
-    #[test] fn pn_middle_dot()     { assert_eq!(punc_norm("奧斯卡·王爾德"),    "奧斯卡 王爾德"); }
-    #[test] fn pn_wave_dash()      { assert_eq!(punc_norm("早～"),              "早 "); }
-    #[test] fn pn_enum_comma()     { assert_eq!(punc_norm("蘋果、橙"),          "蘋果，橙"); }
-    #[test] fn pn_decorative()     { assert_eq!(punc_norm("※注意★"),           "注意"); }
-    #[test] fn pn_multi_space()    { assert_eq!(punc_norm("你  好"),            "你 好"); }
-    #[test] fn pn_passthrough()    { assert_eq!(punc_norm("你好嘅，I love HK"), "你好嘅，I love HK"); }
-    #[test] fn pn_combined()       {
+    #[test]
+    fn pn_quotebrackets() {
+        assert_eq!(punc_norm("「你好」"), "你好");
+    }
+    #[test]
+    fn pn_book_title() {
+        assert_eq!(punc_norm("《天氣之子》"), "天氣之子");
+    }
+    #[test]
+    fn pn_square() {
+        assert_eq!(punc_norm("【重要】"), "重要");
+    }
+    #[test]
+    fn pn_curly_quotes() {
+        assert_eq!(punc_norm("\u{201C}hello\u{201D}"), "hello");
+    }
+    #[test]
+    fn pn_ellipsis() {
+        assert_eq!(punc_norm("好吧…"), "好吧。");
+    }
+    #[test]
+    fn pn_double_ellipsis() {
+        assert_eq!(punc_norm("好吧……"), "好吧。");
+    }
+    #[test]
+    fn pn_ascii_ellipsis() {
+        assert_eq!(punc_norm("好吧..."), "好吧。");
+    }
+    #[test]
+    fn pn_em_dash_pair() {
+        assert_eq!(punc_norm("一——二"), "一，二");
+    }
+    #[test]
+    fn pn_em_dash_single() {
+        assert_eq!(punc_norm("一—二"), "一，二");
+    }
+    #[test]
+    fn pn_en_dash() {
+        assert_eq!(punc_norm("一–二"), "一，二");
+    }
+    #[test]
+    fn pn_double_hyphen() {
+        assert_eq!(punc_norm("一--二"), "一，二");
+    }
+    #[test]
+    fn pn_single_hyphen() {
+        assert_eq!(punc_norm("km-h"), "km-h");
+    }
+    #[test]
+    fn pn_middle_dot() {
+        assert_eq!(punc_norm("奧斯卡·王爾德"), "奧斯卡 王爾德");
+    }
+    #[test]
+    fn pn_wave_dash() {
+        assert_eq!(punc_norm("早～"), "早 ");
+    }
+    #[test]
+    fn pn_enum_comma() {
+        assert_eq!(punc_norm("蘋果、橙"), "蘋果，橙");
+    }
+    #[test]
+    fn pn_decorative() {
+        assert_eq!(punc_norm("※注意★"), "注意");
+    }
+    #[test]
+    fn pn_multi_space() {
+        assert_eq!(punc_norm("你  好"), "你 好");
+    }
+    #[test]
+    fn pn_passthrough() {
+        assert_eq!(punc_norm("你好嘅，I love HK"), "你好嘅，I love HK");
+    }
+    #[test]
+    fn pn_combined() {
         // Typical messy TTS input
         assert_eq!(
             punc_norm("《天氣之子》——一個關於天氣……的故事"),

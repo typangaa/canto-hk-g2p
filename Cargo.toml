@@ -1,10 +1,11 @@
 [package]
-name = "canto-g2p"
-version = "0.1.0"
+name = "canto-hk-g2p"
+version = "1.0.0"
 edition = "2021"
+rust-version = "1.63"
 description = "Fast Cantonese text-to-phoneme (G2P) converter — Jyutping with tone numbers"
 license = "Apache-2.0"
-repository = "https://github.com/typangaa/canto-g2p"
+repository = "https://github.com/typangaa/canto-hk-g2p"
 keywords = ["cantonese", "g2p", "jyutping", "tts", "nlp"]
 categories = ["text-processing"]
 

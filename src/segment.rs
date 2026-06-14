@@ -29,7 +29,7 @@ fn run_kind(c: char) -> RunKind {
 /// * CJK runs  → longest-match segmentation over `word_dict`
 /// * Latin runs (ASCII a-z A-Z 0-9) → kept as a single token each
 /// * Other chars → non-whitespace emitted as individual tokens (punctuation),
-///                 whitespace silently dropped
+///   whitespace silently dropped
 pub fn segment_owned(text: &str, word_dict: &Dict) -> Vec<String> {
     let mut tokens: Vec<String> = Vec::new();
     let mut buf = String::new();

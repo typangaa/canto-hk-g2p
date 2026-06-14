@@ -100,12 +100,7 @@ impl Dict {
 
         // magic
         if &data[0..4] != MAGIC {
-            return Err(format!(
-                "bad magic: expected {:?}, got {:?}",
-                MAGIC,
-                &data[0..4]
-            )
-            .into());
+            return Err(format!("bad magic: expected {:?}, got {:?}", MAGIC, &data[0..4]).into());
         }
 
         // version
@@ -238,7 +233,7 @@ impl Dict {
     /// the pool region and contains valid UTF-8.  Both conditions are
     /// guaranteed by a well-formed binary file (validated at load time via
     /// pool_size bounds check).
-    fn pool_str<'a>(&'a self, start: usize, len: usize) -> &'a str {
+    fn pool_str(&self, start: usize, len: usize) -> &str {
         unsafe {
             let slice = std::slice::from_raw_parts(self.pool_ptr.add(start), len);
             // The binary builder is required to write valid UTF-8; if the file
@@ -328,12 +323,13 @@ mod tests {
                     .duration_since(UNIX_EPOCH)
                     .unwrap_or_default()
                     .subsec_nanos();
-                let dir = std::env::temp_dir()
-                    .join(format!("canto_g2p_test_{}", nanos));
+                let dir = std::env::temp_dir().join(format!("canto_g2p_test_{}", nanos));
                 std::fs::create_dir_all(&dir).unwrap();
                 TempDir(dir)
             }
-            pub fn path(&self) -> &std::path::Path { &self.0 }
+            pub fn path(&self) -> &std::path::Path {
+                &self.0
+            }
         }
 
         impl Drop for TempDir {
@@ -352,8 +348,7 @@ mod tests {
                         .duration_since(UNIX_EPOCH)
                         .unwrap_or_default()
                         .subsec_nanos();
-                    let dir = std::env::temp_dir()
-                        .join(format!("canto_g2p_test_{}", nanos));
+                    let dir = std::env::temp_dir().join(format!("canto_g2p_test_{}", nanos));
                     std::fs::create_dir_all(&dir).unwrap();
                     TempDir(dir)
                 }
@@ -437,17 +432,17 @@ mod tests {
     fn test_multiple_entries_lookup() {
         let pairs = &[
             ("你好嘅", "nei5 hou2 ge3"),
-            ("你好",   "nei5 hou2"),
-            ("你",     "nei5"),
-            ("好",     "hou2"),
-            ("嘅",     "ge3"),
+            ("你好", "nei5 hou2"),
+            ("你", "nei5"),
+            ("好", "hou2"),
+            ("嘅", "ge3"),
         ];
         let td = make_dict(pairs);
 
-        assert_eq!(td.dict.lookup("你"),     Some("nei5"));
-        assert_eq!(td.dict.lookup("好"),     Some("hou2"));
-        assert_eq!(td.dict.lookup("嘅"),     Some("ge3"));
-        assert_eq!(td.dict.lookup("你好"),   Some("nei5 hou2"));
+        assert_eq!(td.dict.lookup("你"), Some("nei5"));
+        assert_eq!(td.dict.lookup("好"), Some("hou2"));
+        assert_eq!(td.dict.lookup("嘅"), Some("ge3"));
+        assert_eq!(td.dict.lookup("你好"), Some("nei5 hou2"));
         assert_eq!(td.dict.lookup("你好嘅"), Some("nei5 hou2 ge3"));
         assert!(td.dict.lookup("唔該").is_none());
     }
@@ -455,9 +450,9 @@ mod tests {
     #[test]
     fn test_lookup_ascii_entries() {
         let td = make_dict(&[("a", "aa1"), ("ab", "aa1 baa1"), ("b", "baa1")]);
-        assert_eq!(td.dict.lookup("a"),  Some("aa1"));
+        assert_eq!(td.dict.lookup("a"), Some("aa1"));
         assert_eq!(td.dict.lookup("ab"), Some("aa1 baa1"));
-        assert_eq!(td.dict.lookup("b"),  Some("baa1"));
+        assert_eq!(td.dict.lookup("b"), Some("baa1"));
         assert!(td.dict.lookup("c").is_none());
     }
 
@@ -465,8 +460,8 @@ mod tests {
     fn test_longest_prefix_match_basic() {
         let pairs = &[
             ("你好嘅", "nei5 hou2 ge3"),
-            ("你好",   "nei5 hou2"),
-            ("你",     "nei5"),
+            ("你好", "nei5 hou2"),
+            ("你", "nei5"),
         ];
         let td = make_dict(pairs);
 
@@ -491,8 +486,8 @@ mod tests {
     fn test_longest_prefix_match_max_chars_limit() {
         let pairs = &[
             ("你好嘅", "nei5 hou2 ge3"),
-            ("你好",   "nei5 hou2"),
-            ("你",     "nei5"),
+            ("你好", "nei5 hou2"),
+            ("你", "nei5"),
         ];
         let td = make_dict(pairs);
 
@@ -512,10 +507,7 @@ mod tests {
     #[test]
     fn test_longest_prefix_match_falls_back_to_shorter() {
         // Only single-char entries present; multi-char prefix should fall back.
-        let pairs = &[
-            ("你", "nei5"),
-            ("好", "hou2"),
-        ];
+        let pairs = &[("你", "nei5"), ("好", "hou2")];
         let td = make_dict(pairs);
 
         let result = td.dict.longest_prefix_match("你好嘅", 5);

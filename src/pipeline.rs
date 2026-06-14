@@ -1,7 +1,7 @@
+use crate::dict::Dict;
+use crate::{g2p, normalizer, segment};
 use rayon::prelude::*;
 use std::path::PathBuf;
-use crate::{normalizer, segment, g2p};
-use crate::dict::Dict;
 
 pub struct Pipeline {
     word_dict: Dict,
@@ -12,11 +12,20 @@ pub struct Pipeline {
 fn default_data_dir() -> PathBuf {
     // Look for data/ next to the compiled binary, then fall back to cwd/data/
     let exe = std::env::current_exe().unwrap_or_default();
-    let candidate = exe.parent().unwrap_or(std::path::Path::new(".")).join("data");
+    let candidate = exe
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("data");
     if candidate.exists() {
         return candidate;
     }
     PathBuf::from("data")
+}
+
+impl Default for Pipeline {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Pipeline {
@@ -29,8 +38,9 @@ impl Pipeline {
     /// Create a Pipeline with explicit options.
     pub fn new_with_opts(punc_norm: bool) -> Self {
         let data_dir = default_data_dir();
-        Self::from_dir_opts(&data_dir, punc_norm)
-            .unwrap_or_else(|e| panic!("canto-g2p: failed to load dicts from {:?}: {}", data_dir, e))
+        Self::from_dir_opts(&data_dir, punc_norm).unwrap_or_else(|e| {
+            panic!("canto-g2p: failed to load dicts from {:?}: {}", data_dir, e)
+        })
     }
 
     /// Create a Pipeline from a custom directory containing word.bin and char.bin.
@@ -38,10 +48,17 @@ impl Pipeline {
         Self::from_dir_opts(dir, true)
     }
 
-    pub fn from_dir_opts(dir: &std::path::Path, punc_norm: bool) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_dir_opts(
+        dir: &std::path::Path,
+        punc_norm: bool,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let word_dict = Dict::load(&dir.join("word.bin"))?;
         let char_dict = Dict::load(&dir.join("char.bin"))?;
-        Ok(Pipeline { word_dict, char_dict, punc_norm })
+        Ok(Pipeline {
+            word_dict,
+            char_dict,
+            punc_norm,
+        })
     }
 
     pub fn convert(&self, text: &str) -> String {
