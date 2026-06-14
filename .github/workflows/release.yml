@@ -45,6 +45,10 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
           manylinux: auto
+        env:
+          # Allow building against Python 3.14+ (newer than pyo3's declared max)
+          # using the stable ABI. Remove once pyo3 declares support for 3.14.
+          PYO3_USE_ABI3_FORWARD_COMPATIBILITY: "1"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -93,6 +97,10 @@ jobs:
   windows:
     name: Build Windows wheels
     runs-on: windows-latest
+    env:
+      # Windows stdout defaults to CP1252; force UTF-8 so non-ASCII
+      # characters in script output don't crash the process.
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v4
 
@@ -141,6 +149,11 @@ jobs:
 
       - name: Build binary dicts
         run: uv run python scripts/build_dict.py
+
+      # maturin-action tries to pip install cffi/patchelf into the uv-managed
+      # .venv, which lacks pip by default. Add pip first.
+      - name: Add pip to uv venv
+        run: uv pip install pip
 
       - name: Build sdist
         uses: PyO3/maturin-action@v1

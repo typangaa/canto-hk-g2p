@@ -141,7 +141,7 @@ def main() -> None:
         "- License: Apache-2.0 (same as canto-g2p)\n",
     ]
     sources_path.write_text("".join(lines), encoding="utf-8")
-    print(f"\n✓ Wrote {sources_path.relative_to(REPO_ROOT)}")
+    print(f"\nOK  Wrote {sources_path.relative_to(REPO_ROOT)}")
 
     # ── 4. Summary ────────────────────────────────────────────────────────
     rime_total = sum((RIME_DIR / f).stat().st_size for f in RIME_FILES)
