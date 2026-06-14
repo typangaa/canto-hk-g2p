@@ -149,9 +149,9 @@ def main() -> None:
     # Import canto-g2p (required)
     # ------------------------------------------------------------------
     try:
-        from canto_g2p import Pipeline
+        from canto_hk_g2p import Pipeline
     except ImportError as exc:
-        print(f"ERROR: could not import canto_g2p: {exc}")
+        print(f"ERROR: could not import canto_hk_g2p: {exc}")
         print("Make sure the library is installed: pip install -e . (maturin develop)")
         raise SystemExit(1)
 

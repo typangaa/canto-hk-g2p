@@ -64,7 +64,7 @@ uv pip install canto-hk-g2p
 uv add canto-hk-g2p
 ```
 
-Pre-built wheels are available for Linux (x86\_64, aarch64), macOS (x86\_64, Apple Silicon), and Windows (x86\_64) for Python 3.8–3.12. No Rust toolchain required for end users.
+Pre-built wheels are available for Linux (x86\_64, aarch64), macOS (x86\_64, Apple Silicon), and Windows (x86\_64) for Python 3.8+. No Rust toolchain required for end users.
 
 ---
 
