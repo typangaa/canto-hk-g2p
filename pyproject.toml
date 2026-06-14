@@ -43,7 +43,7 @@ dev = ["pytest>=7", "maturin>=1.4"]
 testpaths = ["tests"]
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+features = ["pyo3/extension-module", "pyo3/abi3-py38"]
 python-source = "python"
 module-name = "canto_hk_g2p._canto_hk_g2p"
 # Explicitly include generated binary dicts (gitignored but required in the wheel).
