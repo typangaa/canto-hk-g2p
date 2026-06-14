@@ -1,9 +1,15 @@
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Optional
+
 from ._canto_hk_g2p import PyPipeline as _PyPipeline
 
 __all__ = ["Pipeline"]
-__version__ = "1.0.0"  # keep in sync with pyproject.toml
+
+try:
+    __version__ = version("canto-hk-g2p")
+except PackageNotFoundError:
+    __version__ = "unknown"
 
 # Bundled data directory (inside the installed package).
 # Falls back to None → Rust uses cwd/data/ (local dev workflow).
