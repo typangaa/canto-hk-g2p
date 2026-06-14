@@ -1,11 +1,11 @@
 use pyo3::prelude::*;
 use pyo3::types::PyList;
 
-mod normalizer;
-mod segment;
-mod g2p;
-mod pipeline;
 pub mod dict;
+mod g2p;
+mod normalizer;
+mod pipeline;
+mod segment;
 
 pub use pipeline::Pipeline;
 
@@ -26,8 +26,7 @@ impl PyPipeline {
     #[pyo3(signature = (punc_norm=true, data_dir=None))]
     pub fn new(punc_norm: bool, data_dir: Option<&str>) -> PyResult<Self> {
         let inner = match data_dir {
-            Some(dir) => pipeline::Pipeline::from_dir_opts(
-                std::path::Path::new(dir), punc_norm)
+            Some(dir) => pipeline::Pipeline::from_dir_opts(std::path::Path::new(dir), punc_norm)
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?,
             None => pipeline::Pipeline::new_with_opts(punc_norm),
         };
@@ -40,13 +39,15 @@ impl PyPipeline {
     }
 
     /// Convert a list of strings in parallel (Rayon).
-    pub fn convert_batch(&self, py: Python<'_>, texts: &Bound<'_, PyList>) -> PyResult<Vec<String>> {
+    pub fn convert_batch(
+        &self,
+        texts: &Bound<'_, PyList>,
+    ) -> PyResult<Vec<String>> {
         let inputs: Vec<String> = texts
             .iter()
             .map(|item| item.extract::<String>())
             .collect::<PyResult<_>>()?;
-        let results = py.allow_threads(|| self.inner.convert_batch(&inputs));
-        Ok(results)
+        Ok(self.inner.convert_batch(&inputs))
     }
 
     /// Convert text to a list of (token, jyutping, lang) triples.
