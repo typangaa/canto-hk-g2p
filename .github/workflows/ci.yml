@@ -5,17 +5,13 @@ on:
     branches: [master, main]
   pull_request:
 
-# Force Node.js 24 for all JS actions (checkout, cache, setup-uv) before
-# the June 16 2026 mandatory migration deadline.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   lint:
     name: Rust lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -37,13 +33,13 @@ jobs:
         python-version: ["3.9", "3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -52,13 +48,13 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache-dependency-glob: "pyproject.toml"
 
       - name: Cache raw data sources
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: cache-data
         with:
           path: data/raw
