@@ -168,7 +168,7 @@ class TestConvertIpa:
     def test_basic_cantonese(self, p):
         result = p.convert_ipa("你好嘅")
         assert "nei̯" in result
-        assert "hɐu̯" in result
+        assert "hou̯" in result
         assert "kɛː" in result
 
     def test_tone_diacritic_default(self, p):
