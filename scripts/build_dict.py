@@ -45,6 +45,8 @@ UNIHAN_READINGS = RAW_DIR / "unihan" / "Unihan_Readings.txt"
 PKG_DATA_DIR = REPO_ROOT / "python" / "canto_hk_g2p" / "data"
 OUT_WORD_BIN = PKG_DATA_DIR / "word.bin"
 OUT_CHAR_BIN = PKG_DATA_DIR / "char.bin"
+CMUDICT_SRC = RAW_DIR / "cmudict" / "cmudict.dict"
+CMUDICT_DST = PKG_DATA_DIR / "cmudict.dict"
 
 # ---------------------------------------------------------------------------
 # Binary format constants
@@ -383,6 +385,14 @@ def main() -> None:
     print(f"  rime-cantonese (chars)   : {len(rime_chars):,}")
     print(f"  unihan kCantonese        : {len(unihan_dict):,}")
     print("=" * 60)
+
+    # Copy cmudict.dict into package data for bundling
+    if CMUDICT_SRC.exists():
+        import shutil
+        shutil.copy2(CMUDICT_SRC, CMUDICT_DST)
+        print(f"OK  Copied cmudict.dict → {CMUDICT_DST.relative_to(REPO_ROOT)}")
+    else:
+        print("WARN  cmudict.dict not found — run fetch_data.py first", file=sys.stderr)
 
 
 if __name__ == "__main__":

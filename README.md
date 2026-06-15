@@ -109,6 +109,36 @@ p.convert_detailed("香港 hello")
 
 ---
 
+## IPA output
+
+```python
+from canto_hk_g2p import Pipeline
+from canto_hk_g2p.ipa import jyutping_to_ipa
+
+p = Pipeline()
+
+# Cantonese → IPA with tone diacritics (default)
+p.convert_ipa("你好嘅")
+# → "nei̯˩˧ hɐu̯˧˥ kɛː˧"
+
+# IPA with tone numbers
+p.convert_ipa("你好嘅", tone="number")
+# → "nei̯5 hɐu̯2 kɛː3"
+
+# English code-switching → English tokens use CMU dict
+p.convert_ipa("佢 send 咗 email 俾我")
+# → "kʰɵy̯˨ sɛnd tsɔː˧ iːmeɪl pei̯˧˥ ŋɔː˩˧"
+
+# Standalone utility — convert existing Jyutping strings
+jyutping_to_ipa("hoeng1 gong2")
+# → "hœːŋ˥ kɔːŋ˧˥"
+```
+
+IPA tone marks: ˥ high level (1), ˧˥ high rising (2), ˧ mid level (3),
+˨˩ low falling (4), ˩˧ low rising (5), ˨ low level (6).
+
+---
+
 ## API reference
 
 ### `Pipeline(*, punc_norm=True)`

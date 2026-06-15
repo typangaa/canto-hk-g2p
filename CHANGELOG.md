@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-06-14
+
+### Added
+
+**IPA (International Phonetic Alphabet) output**
+- `Pipeline.convert_ipa(text, tone="diacritic"|"number")` — converts Cantonese text to IPA
+  - Cantonese tokens: Jyutping→IPA via complete LSHK phoneme mapping
+  - English tokens: CMU Pronouncing Dictionary (BSD-2-Clause) → ARPAbet→IPA
+  - Tone format: `"diacritic"` (default) uses IPA suprasegmentals ˥˧˥˧˨˩˩˧˨; `"number"` keeps digit suffix
+- `canto_hk_g2p.ipa.jyutping_to_ipa(jyutping, tone)` — standalone utility for converting existing Jyutping strings to IPA
+- `canto_hk_g2p.ipa.syllable_to_ipa(syllable, tone)` — single Jyutping syllable converter
+- CMU Pronouncing Dictionary bundled in wheel (BSD-2-Clause, Carnegie Mellon University)
+- Attribution added to NOTICE
+
+[1.5.0]: https://github.com/typangaa/canto-hk-g2p/compare/v1.0.0...v1.5.0
+
 ## [1.0.0] — 2026-06-14
 
 First public release. PyPI: `pip install canto-hk-g2p`.
@@ -48,4 +64,4 @@ First public release. PyPI: `pip install canto-hk-g2p`.
 - Apache-2.0 library license; data attribution in `NOTICE`
 - 228 tests (115 Rust unit tests + 113 Python integration tests)
 
-[1.0.0]: https://github.com/typangaa/canto-hk-g2p/releases/tag/v1.0.0
+[1.0.0]: https://github.com/typangaa/canto-hk-g2p/compare/v0.0.0...v1.0.0

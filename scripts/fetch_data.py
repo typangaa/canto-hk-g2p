@@ -35,12 +35,17 @@ RIME_FILES = [
 UNIHAN_ZIP_URL = "https://unicode.org/Public/UCD/latest/ucd/Unihan.zip"
 UNIHAN_READING_FILE = "Unihan_Readings.txt"
 
+# CMU Pronouncing Dictionary — BSD-2-Clause
+CMUDICT_URL  = "https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict"
+CMUDICT_DIR  = None  # set after DATA_RAW is defined below
+
 # ── Paths ────────────────────────────────────────────────────────────────────
 
 REPO_ROOT = Path(__file__).parent.parent
 DATA_RAW  = REPO_ROOT / "data" / "raw"
 RIME_DIR  = DATA_RAW / "rime-cantonese"
 UNIHAN_DIR = DATA_RAW / "unihan"
+CMUDICT_DIR = DATA_RAW / "cmudict"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -76,7 +81,7 @@ def main() -> None:
     checksums: dict[str, str] = {}
 
     # ── 1. rime-cantonese ─────────────────────────────────────────────────
-    print(f"\n[1/2] rime-cantonese  (commit {RIME_COMMIT}, CC-BY-4.0)")
+    print(f"\n[1/3] rime-cantonese  (commit {RIME_COMMIT}, CC-BY-4.0)")
     for fname in RIME_FILES:
         dest = RIME_DIR / fname
         if dest.exists():
@@ -86,7 +91,7 @@ def main() -> None:
             checksums[fname] = download(f"{RIME_BASE}/{fname}", dest)
 
     # ── 2. Unihan_Readings.txt (from Unihan.zip) ──────────────────────────
-    print(f"\n[2/2] Unihan_Readings.txt  (Unicode License v3, via Unihan.zip)")
+    print(f"\n[2/3] Unihan_Readings.txt  (Unicode License v3, via Unihan.zip)")
     unihan_dest = UNIHAN_DIR / "Unihan_Readings.txt"
     if unihan_dest.exists():
         print(f"  Unihan_Readings.txt  already present, skipping")
@@ -111,7 +116,17 @@ def main() -> None:
     )
     print(f"  kCantonese entries: {cant_count:,}")
 
-    # ── 3. Write SOURCES.md ───────────────────────────────────────────────
+    # ── 3. CMU Pronouncing Dictionary ─────────────────────────────────────
+    CMUDICT_DIR.mkdir(parents=True, exist_ok=True)
+    print("\n[3/3] CMU Pronouncing Dictionary  (BSD-2-Clause)")
+    cmudict_dest = CMUDICT_DIR / "cmudict.dict"
+    if cmudict_dest.exists():
+        print("  cmudict.dict  already present, skipping")
+        checksums["cmudict.dict"] = sha256_file(cmudict_dest)
+    else:
+        checksums["cmudict.dict"] = download(CMUDICT_URL, cmudict_dest)
+
+    # ── 4. Write SOURCES.md ───────────────────────────────────────────────
     sources_path = REPO_ROOT / "data" / "SOURCES.md"
     lines = [
         "# Data sources\n",
@@ -136,6 +151,13 @@ def main() -> None:
         f"sha256={checksums['Unihan_Readings.txt'][:16]}…\n",
         f"- kCantonese entries: {cant_count:,}\n",
         "\n",
+        "## CMU Pronouncing Dictionary\n",
+        "- Version: latest (from cmusphinx/cmudict master)\n",
+        "- License: BSD 2-Clause\n",
+        "- Source: https://github.com/cmusphinx/cmudict\n",
+        "- Credit: Carnegie Mellon University Speech Group\n",
+        f"- File: `cmudict.dict`  sha256={checksums.get('cmudict.dict', 'unknown')[:16]}…\n",
+        "\n",
         "## Hand-curated\n",
         "- `data/oral_hk.tsv` — HK colloquial characters (~60 entries)\n",
         "- License: Apache-2.0 (same as canto-g2p)\n",
@@ -143,13 +165,15 @@ def main() -> None:
     sources_path.write_text("".join(lines), encoding="utf-8")
     print(f"\nOK  Wrote {sources_path.relative_to(REPO_ROOT)}")
 
-    # ── 4. Summary ────────────────────────────────────────────────────────
+    # ── 5. Summary ────────────────────────────────────────────────────────
     rime_total = sum((RIME_DIR / f).stat().st_size for f in RIME_FILES)
     unihan_size = unihan_dest.stat().st_size
+    cmudict_size = cmudict_dest.stat().st_size
     print(f"\n{'─'*50}")
     print(f"rime-cantonese:  {rime_total / 1024**2:.1f} MB  ({len(RIME_FILES)} files)")
     print(f"Unihan:          {unihan_size / 1024**2:.1f} MB")
-    print(f"Total raw data:  {(rime_total + unihan_size) / 1024**2:.1f} MB")
+    print(f"cmudict:         {cmudict_size / 1024**2:.1f} MB")
+    print(f"Total raw data:  {(rime_total + unihan_size + cmudict_size) / 1024**2:.1f} MB")
     print(f"{'─'*50}")
     print("Phase 1 data fetch complete. Next: run builder to generate .bin files.")
 

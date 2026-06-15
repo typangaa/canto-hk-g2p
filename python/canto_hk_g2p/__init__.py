@@ -3,8 +3,9 @@ from pathlib import Path
 from typing import Optional
 
 from ._canto_hk_g2p import PyPipeline as _PyPipeline
+from .ipa import jyutping_to_ipa as jyutping_to_ipa  # re-export
 
-__all__ = ["Pipeline"]
+__all__ = ["Pipeline", "jyutping_to_ipa"]
 
 try:
     __version__ = version("canto-hk-g2p")
@@ -103,4 +104,49 @@ class Pipeline:
             # → [("香港", "hoeng1 gong2", "yue"), ("hello", "hello", "en")]
         """
         return self._inner.convert_detailed(text)
+
+    def convert_ipa(
+        self,
+        text: str,
+        tone: str = "diacritic",
+    ) -> str:
+        """Convert text to IPA (International Phonetic Alphabet).
+
+        Uses Jyutping→IPA mapping for Cantonese tokens and the CMU Pronouncing
+        Dictionary for English tokens. Non-dictionary English words pass through
+        unchanged.
+
+        Args:
+            text: Input text (Cantonese, English, or mixed).
+            tone: "diacritic" (default) — IPA suprasegmental tone marks (˥˧˥˧˨˩˩˧˨).
+                  "number" — IPA phonemes with Jyutping tone digit suffix.
+
+        Returns:
+            Space-separated IPA string.
+
+        Example::
+
+            p = Pipeline()
+            p.convert_ipa("你好嘅")
+            # → "nei̯˩˧ hɐu̯˧˥ kɛː˧"
+
+            p.convert_ipa("你好嘅", tone="number")
+            # → "nei̯5 hɐu̯2 kɛː3"
+
+            p.convert_ipa("佢 send 咗 email 俾我")
+            # → "kʰɵy̯˨ sɛnd tsɔː˧ iːmeɪl pei̯˧˥ ŋɔː˩˧"
+        """
+        from .ipa import syllable_to_ipa
+        from ._cmu import english_word_to_ipa
+
+        parts: list[str] = []
+        for token, jyutping, lang in self._inner.convert_detailed(text):
+            if lang == "yue":
+                ipa_syls = [syllable_to_ipa(syl, tone) for syl in jyutping.split()]
+                parts.append(" ".join(ipa_syls))
+            elif lang == "en":
+                parts.append(english_word_to_ipa(token))
+            else:
+                parts.append(token)
+        return " ".join(parts)
 

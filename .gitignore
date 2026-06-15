@@ -10,3 +10,4 @@ __pycache__/
 data/*.bin
 data/raw/
 python/canto_hk_g2p/data/*.bin
+python/canto_hk_g2p/data/cmudict.dict
