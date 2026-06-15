@@ -1,6 +1,6 @@
 # canto-hk-g2p
 
-**Fast Cantonese text-to-phoneme (G2P) converter** — converts Cantonese (and English code-switched) text to Jyutping with tone numbers (LSHK standard, all-ASCII). Rust core with Python bindings via PyO3/maturin.
+**Fast Cantonese text-to-phoneme (G2P) converter** — converts Cantonese (and English code-switched) text to Jyutping with tone numbers (LSHK standard, all-ASCII) or IPA. Rust core with Python bindings via PyO3/maturin.
 
 [![CI](https://github.com/typangaa/canto-hk-g2p/actions/workflows/ci.yml/badge.svg)](https://github.com/typangaa/canto-hk-g2p/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/canto-hk-g2p)](https://pypi.org/project/canto-hk-g2p/)
@@ -29,7 +29,8 @@ The library is a standalone open-source deliverable — Cantonese TTS pre-proces
 ## Features
 
 - **All-ASCII Jyutping output** with LSHK tone numbers (`nei5 hou2 ge3`)
-- **English code-switching** — the only Cantonese G2P tool that handles mixed HK text; English tokens pass through unchanged (`佢 send 咗 email 俾我` → `keoi5 send zo2 email bei2 ngo5`)
+- **IPA output** — `convert_ipa()` with tone diacritics (`nei̯˩˧ hou̯˧˥ kɛː˧`) or tone numbers (`nei̯5 hou̯2 kɛː3`); English tokens converted via CMU Pronouncing Dictionary
+- **English code-switching** — the only Cantonese G2P tool that handles mixed HK text; English tokens pass through unchanged in Jyutping mode (`佢 send 咗 email 俾我` → `keoi5 send zo2 email bei2 ngo5`), or converted to IPA in IPA mode
 - **Punctuation normalisation** (`punc_norm=True` by default) — converts exotic punctuation to TTS-friendly equivalents before G2P: `「」《》` removed, `…` → `。`, `——` → `，`, `·` → space, `、` → `，`
 - **Text normalization** — Arabic and full-width digits expanded to Cantonese spoken form:
   - Year: `2026年` → `ji6 ling4 ji6 luk6 nin4`
@@ -112,30 +113,38 @@ p.convert_detailed("香港 hello")
 ## IPA output
 
 ```python
-from canto_hk_g2p import Pipeline
-from canto_hk_g2p.ipa import jyutping_to_ipa
+from canto_hk_g2p import Pipeline, jyutping_to_ipa
 
 p = Pipeline()
 
 # Cantonese → IPA with tone diacritics (default)
 p.convert_ipa("你好嘅")
-# → "nei̯˩˧ hɐu̯˧˥ kɛː˧"
+# → "nei̯˩˧ hou̯˧˥ kɛː˧"
 
 # IPA with tone numbers
 p.convert_ipa("你好嘅", tone="number")
-# → "nei̯5 hɐu̯2 kɛː3"
+# → "nei̯5 hou̯2 kɛː3"
 
-# English code-switching → English tokens use CMU dict
+# English code-switching → English tokens converted via CMU Pronouncing Dictionary
 p.convert_ipa("佢 send 咗 email 俾我")
-# → "kʰɵy̯˨ sɛnd tsɔː˧ iːmeɪl pei̯˧˥ ŋɔː˩˧"
+# → "kʰœːy̯˩˧ sɛnd tsɔː˧˥ iːmeɪl pei̯˧˥ ŋɔː˩˧"
 
-# Standalone utility — convert existing Jyutping strings
+# Unknown English words (OOV) pass through unchanged
+p.convert_ipa("佢去MTR站")
+# → "kʰœːy̯˩˧ hœːy̯˧˥ MTR tsaam6˨"
+
+# Standalone utility — convert existing Jyutping strings to IPA
 jyutping_to_ipa("hoeng1 gong2")
 # → "hœːŋ˥ kɔːŋ˧˥"
+
+jyutping_to_ipa("nei5 hou2 ge3", tone="number")
+# → "nei̯5 hou̯2 kɛː3"
 ```
 
 IPA tone marks: ˥ high level (1), ˧˥ high rising (2), ˧ mid level (3),
 ˨˩ low falling (4), ˩˧ low rising (5), ˨ low level (6).
+
+`jyutping_to_ipa` is also importable directly from `canto_hk_g2p` as shown above, or from `canto_hk_g2p.ipa`.
 
 ---
 
@@ -191,6 +200,49 @@ p.convert_batch(["香港", "銀行", "你好嘅"])
 # → ["hoeng1 gong2", "ngan4 hong4", "nei5 hou2 ge3"]
 
 p.convert_batch([])   # → []
+```
+
+---
+
+### `convert_ipa(text: str, tone: str = "diacritic") -> str`
+
+Converts text to IPA. Cantonese tokens use the Jyutping→IPA mapping table; English tokens are converted via the bundled CMU Pronouncing Dictionary (OOV words pass through unchanged).
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `text` | `str` | — | Input text (Cantonese, English, or mixed). |
+| `tone` | `str` | `"diacritic"` | `"diacritic"` — IPA suprasegmental tone marks (˥˧˥˧˨˩˩˧˨). `"number"` — IPA phonemes with Jyutping tone digit as suffix. |
+
+**Returns:** `str` — space-separated IPA string.
+
+```python
+p.convert_ipa("香港")
+# → "hœːŋ˥ kɔːŋ˧˥"
+
+p.convert_ipa("香港", tone="number")
+# → "hœːŋ1 kɔːŋ2"
+
+p.convert_ipa("send")     # English → CMU dict
+# → "sɛnd"
+
+p.convert_ipa("MTR")      # OOV → passthrough
+# → "MTR"
+```
+
+---
+
+### `jyutping_to_ipa(jyutping: str, tone: str = "diacritic") -> str`
+
+Standalone utility — converts an existing space-separated Jyutping string to IPA. Non-Jyutping tokens (English, punctuation) pass through unchanged. Importable from `canto_hk_g2p` or `canto_hk_g2p.ipa`.
+
+```python
+from canto_hk_g2p import jyutping_to_ipa
+
+jyutping_to_ipa("nei5 hou2 ge3")
+# → "nei̯˩˧ hou̯˧˥ kɛː˧"
+
+jyutping_to_ipa("hoeng1 gong2", tone="number")
+# → "hœːŋ1 kɔːŋ2"
 ```
 
 ---
@@ -259,12 +311,14 @@ p.convert_detailed("")
 
 | Tool | Implementation | English code-switch | License | Notes |
 |---|---|---|---|---|
-| **canto-hk-g2p** | **Rust + Python** | **Yes (passthrough)** | **Apache-2.0** | First Rust-native Cantonese G2P; mmap binary dict; text normalizer |
-| [ToJyutping](https://github.com/CanCLID/ToJyutping) (CanCLID) | Python / JS | No (letter-by-letter) | BSD-2 | De-facto standard; rime-cantonese data; no normalizer |
-| [PyCantonese](https://github.com/jacksonllee/pycantonese) | Python (Rust internal) | No | MIT | Most complete toolkit; dict-heuristic polyphone |
-| [g2pW-Cantonese](https://github.com/Naozumi520/g2pW-Cantonese) | Python (BERT) | No | mixed | SOTA neural polyphone; trained on words.hk + CantoDict — license-tainted, not cleanly redistributable |
+| Tool | Implementation | English code-switch | IPA output | License | Notes |
+|---|---|---|---|---|---|
+| **canto-hk-g2p** | **Rust + Python** | **Yes** | **Yes (CMU dict)** | **Apache-2.0** | First Rust-native Cantonese G2P; mmap binary dict; text normalizer |
+| [ToJyutping](https://github.com/CanCLID/ToJyutping) (CanCLID) | Python / JS | No (letter-by-letter) | Yes | BSD-2 | De-facto standard; rime-cantonese data; no normalizer |
+| [PyCantonese](https://github.com/jacksonllee/pycantonese) | Python (Rust internal) | No | No | MIT | Most complete toolkit; dict-heuristic polyphone |
+| [g2pW-Cantonese](https://github.com/Naozumi520/g2pW-Cantonese) | Python (BERT) | No | No | mixed | SOTA neural polyphone; trained on words.hk + CantoDict — license-tainted, not cleanly redistributable |
 
-`canto-hk-g2p` is the only tool that handles English code-switching cleanly — standard in Hong Kong Cantonese (e.g. 佢 send 咗 email 俾我) — and the only one with a Cantonese text normalizer for numbers, dates, and currency.
+`canto-hk-g2p` is the only tool that handles English code-switching cleanly — standard in Hong Kong Cantonese (e.g. 佢 send 咗 email 俾我) — and the only one with a Cantonese text normalizer for numbers, dates, and currency. It now also provides full IPA output with English tokens converted via the CMU Pronouncing Dictionary.
 
 ---
 
@@ -277,6 +331,7 @@ p.convert_detailed("")
 | [rime-cantonese](https://github.com/rime/rime-cantonese) `jyut6ping3.dict/.chars/.words` | CC-BY-4.0 | Primary lexicon (~100k entries); attribution required — see `NOTICE` |
 | [Unihan `kCantonese`](https://unicode.org/charts/unihan.html) | Unicode License v3 (MIT-equivalent) | Rare-character fallback (~20k chars) |
 | `data/oral_hk.tsv` (hand-curated) | Apache-2.0 | ~60 HK colloquial characters: 嘅 喺 咗 哋 噉 㗎 囉 喎 … |
+| [CMU Pronouncing Dictionary](https://github.com/cmusphinx/cmudict) | BSD-2-Clause | English → IPA via ARPAbet mapping (~134k entries); used by `convert_ipa()` |
 
 ### Excluded (license-incompatible)
 
@@ -308,7 +363,7 @@ pip install maturin
 git clone https://github.com/typangaa/canto-hk-g2p.git
 cd canto-hk-g2p
 
-# 2. Fetch data sources (downloads ~16 MB from rime-cantonese and Unicode)
+# 2. Fetch data sources (downloads ~20 MB: rime-cantonese, Unicode, CMU dict)
 python3 scripts/fetch_data.py
 
 # 3. Build binary pronunciation dictionaries
@@ -331,7 +386,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 228 tests should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, and `convert_detailed()` output structure.
+All 266 tests should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` output structure, and IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup).
 
 ---
 
