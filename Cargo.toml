@@ -2,7 +2,7 @@
 name = "canto-hk-g2p"
 version = "1.5.0"
 edition = "2021"
-rust-version = "1.64"
+rust-version = "1.65"
 description = "Fast Cantonese text-to-phoneme (G2P) converter — Jyutping with tone numbers"
 license = "Apache-2.0"
 repository = "https://github.com/typangaa/canto-hk-g2p"
