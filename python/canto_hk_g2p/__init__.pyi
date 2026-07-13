@@ -1,4 +1,8 @@
 from .ipa import jyutping_to_ipa as jyutping_to_ipa
+from .phonology import Inventory as Inventory
+from .phonology import Syllable as Syllable
+from .phonology import inventory as inventory
+from .phonology import segment as segment
 
 __version__: str
 __all__: list[str]

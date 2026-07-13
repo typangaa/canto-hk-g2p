@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] — 2026-07-13
+
+### Added
+
+**Jyutping phonological inventory + syllable segmentation API**
+- `canto_hk_g2p.inventory()` — returns the authoritative LSHK Jyutping `Inventory` singleton:
+  - `.onsets` — 19 onsets as a tuple, sorted longest-first (`ng`, `gw`, `kw` before single-char onsets)
+  - `.rimes` — 61 rimes as a `frozenset`
+  - `.tones` — `("1","2","3","4","5","6")`
+  - `.syllabic` — `frozenset({"m","ng"})` — nasals that form a complete syllable on their own
+- `canto_hk_g2p.segment(syllable)` — decomposes a Jyutping syllable string into a `Syllable(onset, rime, tone)` named tuple; returns `None` for invalid input
+- `canto_hk_g2p.Syllable` / `canto_hk_g2p.Inventory` — public dataclass types (frozen, hashable)
+- Pure Python implementation in `canto_hk_g2p.phonology` — no Rust changes, no new dependencies
+- 45 new tests in `tests/test_phonology.py`
+
+This makes `canto-hk-g2p` the single source of truth for the Jyutping phoneme inventory,
+removing the need for downstream consumers (e.g. `canto-hk-tts`) to maintain their own copy.
+
+[1.6.0]: https://github.com/typangaa/canto-hk-g2p/compare/v1.5.0...v1.6.0
+
 ## [1.5.0] — 2026-06-14
 
 ### Added

@@ -4,8 +4,12 @@ from typing import Optional
 
 from ._canto_hk_g2p import PyPipeline as _PyPipeline
 from .ipa import jyutping_to_ipa as jyutping_to_ipa  # re-export
+from .phonology import Inventory as Inventory  # re-export
+from .phonology import Syllable as Syllable  # re-export
+from .phonology import inventory as inventory  # re-export
+from .phonology import segment as segment  # re-export
 
-__all__ = ["Pipeline", "jyutping_to_ipa"]
+__all__ = ["Pipeline", "jyutping_to_ipa", "inventory", "segment", "Syllable", "Inventory"]
 
 try:
     __version__ = version("canto-hk-g2p")
