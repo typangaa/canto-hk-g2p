@@ -22,6 +22,32 @@ _PACKAGE_DATA = Path(__file__).parent / "data"
 _DATA_DIR: Optional[str] = str(_PACKAGE_DATA) if _PACKAGE_DATA.exists() else None
 
 
+def _validate_user_dict(user_dict: dict[str, str]) -> None:
+    """Raise ``ValueError`` on the first malformed ``user_dict`` entry.
+
+    A value is well-formed when it has exactly as many space-separated
+    syllables as the key has characters, and every syllable parses via
+    :func:`segment`. Validating here (construction time) means a typo
+    surfaces immediately instead of silently producing wrong `convert()`
+    output later.
+    """
+    for key, value in user_dict.items():
+        if not key:
+            raise ValueError("user_dict key must not be empty")
+        syllables = value.split()
+        if len(syllables) != len(key):
+            raise ValueError(
+                f"user_dict[{key!r}] = {value!r} has {len(syllables)} syllable(s) "
+                f"but {key!r} has {len(key)} character(s) — must match 1:1"
+            )
+        for syl in syllables:
+            if segment(syl) is None:
+                raise ValueError(
+                    f"user_dict[{key!r}] = {value!r} contains an invalid "
+                    f"Jyutping syllable: {syl!r}"
+                )
+
+
 class Pipeline:
     """Cantonese text-to-Jyutping (G2P) pipeline.
 
@@ -32,6 +58,17 @@ class Pipeline:
         punc_norm: If True (default), run punctuation normalisation before G2P.
             Converts exotic punctuation (「」《》…——) to plain Cantonese equivalents
             that produce clean TTS output. Set to False to disable.
+        user_dict: Optional runtime override dictionary mapping a word or
+            character to a space-separated Jyutping reading, e.g.
+            ``{"老世": "lou5 sai3"}``. Takes priority over every bundled
+            dictionary (rime-cantonese, ToJyutping, ``oral_hk.tsv``) and also
+            participates in segmentation, so a multi-char override is never
+            silently split apart before lookup. Each value is validated at
+            construction time: the number of space-separated syllables must
+            equal the number of characters in the key, and every syllable
+            must be a well-formed Jyutping syllable (see :func:`segment`).
+            Raises ``ValueError`` immediately on a malformed entry, rather
+            than producing wrong output later at ``convert()`` time.
 
     Example::
 
@@ -56,10 +93,25 @@ class Pipeline:
         p2 = Pipeline(punc_norm=False)
         p2.convert("《天氣》")
         # → "《 tin1 hei3 》"
+
+        # Override a reading (e.g. lock a register-specific pronunciation,
+        # or teach the pipeline a word missing from the bundled dictionaries):
+        p3 = Pipeline(user_dict={"行": "hong4", "老世": "lou5 sai3"})
+        p3.convert("行為")     # → "hong4 wai4"   (overridden, not "haang4 wai4")
+        p3.convert("老世")     # → "lou5 sai3"    (not in any bundled dict at all)
     """
 
-    def __init__(self, *, punc_norm: bool = True) -> None:
-        self._inner = _PyPipeline(punc_norm=punc_norm, data_dir=_DATA_DIR)
+    def __init__(
+        self,
+        *,
+        punc_norm: bool = True,
+        user_dict: Optional[dict[str, str]] = None,
+    ) -> None:
+        if user_dict:
+            _validate_user_dict(user_dict)
+        self._inner = _PyPipeline(
+            punc_norm=punc_norm, data_dir=_DATA_DIR, user_dict=user_dict
+        )
 
     def convert(self, text: str) -> str:
         """Convert a single string to space-separated Jyutping.

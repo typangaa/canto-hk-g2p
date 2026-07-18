@@ -4,6 +4,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] — 2026-07-18
+
+### Added
+
+**Runtime override dictionary — `Pipeline(user_dict=...)`** (Phase 7b-1)
+- New constructor parameter: `Pipeline(user_dict={"行": "hong4", "老世": "lou5 sai3"})`
+  — maps a word or character to a space-separated Jyutping reading, layered on
+  top of every bundled dictionary (rime-cantonese, ToJyutping, `oral_hk.tsv`)
+  at the **highest** priority
+- The override also participates in segmentation (not just lookup): a
+  `user_dict` entry wins ties against an equal-length `word_dict` match, and a
+  multi-char entry that doesn't exist in any bundled dict (e.g. `老世`) is not
+  silently split apart by the longest-match segmenter before it ever reaches
+  lookup
+- Validated at construction time, not at `convert()` time: each value's
+  space-separated syllable count must equal its key's character count, and
+  every syllable must be well-formed Jyutping (checked via the existing
+  `segment()` phonology API) — a malformed entry raises `ValueError`
+  immediately instead of silently producing wrong output later
+- **Known limitation**: an override only competes with `word_dict` at its own
+  starting position in the segmenter's greedy longest-match scan. If a
+  *longer* dictionary word starts one character earlier and happens to
+  contain the override's key as a substring, that longer word wins and the
+  override is shadowed (e.g. overriding `正經` has no effect inside `好正經`,
+  because `好正經` is itself a 3-char rime-cantonese entry) — documented and
+  covered by a regression test in `tests/test_user_dict.py`
+- New Rust module `src/user_dict.rs` (`UserDict`) — plain `HashMap`-backed,
+  mirrors `dict::Dict::longest_prefix_match`'s semantics so the two can be
+  compared directly during segmentation; no `.bin` format change, no wheel
+  size change
+- 14 new Python tests (`tests/test_user_dict.py`) + 18 new Rust unit tests
+  across `user_dict.rs`, `segment.rs`, and `g2p.rs`
+
+This is the first half of the deferred "Candidates API" work (Phase 7b);
+splitting it out because override is directly useful on its own (e.g. locking
+a register-specific pronunciation for TTS training) and needs no `.bin`
+format change, unlike the text-level `convert_candidates()` API still planned
+for a future release.
+
+[1.8.0]: https://github.com/typangaa/canto-hk-g2p/compare/v1.7.1...v1.8.0
+
 ## [1.7.1] — 2026-07-18
 
 ### Fixed

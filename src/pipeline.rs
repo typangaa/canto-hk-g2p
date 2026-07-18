@@ -1,15 +1,18 @@
 use crate::dict::Dict;
+use crate::user_dict::UserDict;
 use crate::{g2p, normalizer, segment};
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub struct Pipeline {
     word_dict: Dict,
     char_dict: Dict,
+    user_dict: UserDict,
     pub punc_norm: bool,
 }
 
-fn default_data_dir() -> PathBuf {
+pub fn default_data_dir() -> PathBuf {
     // Look for data/ next to the compiled binary, then fall back to cwd/data/
     let exe = std::env::current_exe().unwrap_or_default();
     let candidate = exe
@@ -52,11 +55,22 @@ impl Pipeline {
         dir: &std::path::Path,
         punc_norm: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::from_dir_opts_with_user_dict(dir, punc_norm, HashMap::new())
+    }
+
+    /// Create a Pipeline from a custom directory, with a runtime override
+    /// dictionary layered on top of word_dict/char_dict (highest priority).
+    pub fn from_dir_opts_with_user_dict(
+        dir: &std::path::Path,
+        punc_norm: bool,
+        user_dict: HashMap<String, String>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let word_dict = Dict::load(&dir.join("word.bin"))?;
         let char_dict = Dict::load(&dir.join("char.bin"))?;
         Ok(Pipeline {
             word_dict,
             char_dict,
+            user_dict: UserDict::new(user_dict),
             punc_norm,
         })
     }
@@ -71,10 +85,12 @@ impl Pipeline {
             text.to_owned()
         };
         let normalized = normalizer::normalize(&pre);
-        let tokens = segment::segment_owned(&normalized, &self.word_dict);
+        let tokens = segment::segment_owned(&normalized, &self.word_dict, &self.user_dict);
         tokens
             .iter()
-            .map(|tok| g2p::token_to_jyutping(tok, &self.word_dict, &self.char_dict))
+            .map(|tok| {
+                g2p::token_to_jyutping(tok, &self.word_dict, &self.char_dict, &self.user_dict)
+            })
             .collect::<Vec<_>>()
             .join(" ")
     }
@@ -95,11 +111,12 @@ impl Pipeline {
             text.to_owned()
         };
         let normalized = normalizer::normalize(&pre);
-        let tokens = segment::segment_owned(&normalized, &self.word_dict);
+        let tokens = segment::segment_owned(&normalized, &self.word_dict, &self.user_dict);
         tokens
             .into_iter()
             .map(|tok| {
-                let jp = g2p::token_to_jyutping(&tok, &self.word_dict, &self.char_dict);
+                let jp =
+                    g2p::token_to_jyutping(&tok, &self.word_dict, &self.char_dict, &self.user_dict);
                 let lang = classify_lang(&tok).to_owned();
                 (tok, jp, lang)
             })

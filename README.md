@@ -45,6 +45,7 @@ The library is a standalone open-source deliverable — Cantonese TTS pre-proces
   - Time: `下午3時15分` → Cantonese spoken time
   - Phone numbers: digit-by-digit expansion
 - **Polyphone disambiguation** via longest-match word-level segmentation (~85% accuracy)
+- **`user_dict` runtime overrides** — `Pipeline(user_dict={"行": "hong4"})` locks a pronunciation above every bundled dictionary, and participates in segmentation so multi-char overrides aren't split apart
 - **Rayon parallel batch processing** — scales to large corpora
 - **Zero runtime Python dependencies** — pronunciation dictionaries bundled in the wheel
 - **`convert_detailed()`** — structured `(token, jyutping, lang)` output with language tags (`yue` / `en` / `punct`)
@@ -150,17 +151,42 @@ IPA tone marks: ˥ high level (1), ˧˥ high rising (2), ˧ mid level (3),
 
 ## API reference
 
-### `Pipeline(*, punc_norm=True)`
+### `Pipeline(*, punc_norm=True, user_dict=None)`
 
 Loads the binary pronunciation dictionaries from the bundled `data/` directory. The pipeline object is reusable and thread-safe for batch calls.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `punc_norm` | `bool` | `True` | Enable punctuation normalisation. Converts `「」《》` (removed), `…`→`。`, `——`→`，`, `·`→space, `、`→`，` before G2P lookup. Set to `False` to disable. |
+| `user_dict` | `dict[str, str] \| None` | `None` | Runtime override: word/char → space-separated Jyutping reading. Highest priority over every bundled dictionary; also participates in segmentation. Validated at construction time (raises `ValueError` on a malformed entry). |
 
 ```python
 p = Pipeline()                   # punc_norm on (default)
 p2 = Pipeline(punc_norm=False)   # raw punctuation passthrough
+```
+
+#### `user_dict` — runtime pronunciation override
+
+```python
+p3 = Pipeline(user_dict={"行為": "hang4 wai4", "老世": "lou5 sai3"})
+p3.convert("行為")   # → "hang4 wai4"   (overrides the bundled dict)
+p3.convert("老世")   # → "lou5 sai3"    (not in any bundled dict at all)
+```
+
+Each value must have exactly as many space-separated syllables as the key has characters, and every syllable must be valid Jyutping:
+
+```python
+Pipeline(user_dict={"老世": "lou5"})     # ValueError — 2 chars, 1 syllable
+Pipeline(user_dict={"行": "xyz9"})       # ValueError — not a valid syllable
+```
+
+**Known limitation:** an override only competes with the bundled `word_dict` at its own starting position during segmentation. If a *longer* dictionary word starts one character earlier and contains the override's key as a substring, that longer word wins and the override is shadowed:
+
+```python
+p = Pipeline(user_dict={"正經": "zing1 ging1"})
+p.convert("正經嚟講")   # → "zing1 ging1 lai4 gong2"  (override applied)
+p.convert("佢好正經")   # → "keoi5 hou2 zing3 ging1"  (shadowed — "好正經" is itself
+                        #    a 3-char dictionary entry starting one char earlier)
 ```
 
 ---
@@ -386,7 +412,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 266 tests should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` output structure, and IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup).
+All 133 Rust unit tests + 271 Python integration tests (404 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), and `user_dict` runtime overrides.
 
 ---
 
