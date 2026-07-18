@@ -113,9 +113,14 @@ Existing tools (all Python/JS, none handle English code-switching):
 ## Data stack — researched & verified (permissive only)
 
 Bundled in the wheel (lookup dictionaries):
-- **rime-cantonese** `jyut6ping3.dict/.chars/.words/.phrase` — **CC-BY-4.0**. ✅ primary lexicon (~100k entries)
+- **rime-cantonese** `jyut6ping3.chars/.words/.lettered` — **CC-BY-4.0**. ✅ primary lexicon (~100k entries)
+  (`.phrase` is NOT fetched — it lacks the `...` YAML separator our parser requires, so it silently
+  produced 0 entries; removed in v1.7.0)
 - **Unihan `kCantonese`** — **Unicode License v3** (MIT-equiv). ✅ rare-char fallback (~20k chars)
 - Hand-curated HK colloquial chars — our own (MIT/Apache). ✅
+- **ToJyutping** (CanCLID) — **BSD-2-Clause**. Build-time only, NOT bundled — decodes rank-ordered
+  polyphone candidates to break ties rime-cantonese leaves ambiguous (e.g. 行/重/平 with several
+  equal-weight readings). See v1.7.0 CHANGELOG.
 
 For FUTURE model training (not bundled, text only):
 - **HKCanCor** — CC-BY — segmenter/polyphone training (~170k words, POS+jyutping tagged)
@@ -128,7 +133,7 @@ words.hk (proprietary), CantoDict (proprietary), Wiktionary (CC-BY-SA/GFDL).
 ## Finalized decisions (locked)
 
 1. **English code-switching**: **passthrough in v1** (English tokens unchanged: `email`→`email`). CMU→IPA real code-switch deferred to a later feature.
-2. **Polyphone (多音字)**: **dictionary / word-boundary only** in v1 (~85% via segmentation; char fallback uses most-frequent reading). Neural tier deferred (would be trained on HKCanCor CC-BY, NOT g2pW).
+2. **Polyphone (多音字)**: **dictionary / word-boundary only** in v1 (~85% via segmentation; char fallback uses most-frequent reading — since v1.7.0, ToJyutping's rank-0 candidate breaks ties rime-cantonese leaves ambiguous). Neural tier deferred (would be trained on HKCanCor CC-BY, NOT g2pW).
 3. **Library license**: **Apache-2.0** (explicit patent grant + retaliation clause; single LICENSE file).
 4. **Segmenter**: **own longest-match + word-frequency DP** over the word dict (zero-dep; jieba-rs deferred behind a future feature flag). Rationale: for G2P, segmentation only needs to catch polyphone-disambiguating multi-char words — per-char jyutping fallback covers the rest.
 

@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] — 2026-07-18
+
+### Fixed
+
+**Polyphone (多音字) / 文白異讀 tie-breaking**
+- Added [ToJyutping](https://github.com/CanCLID/ToJyutping) (CanCLID, BSD-2-Clause) as a
+  **build-time-only** data source (not bundled in the wheel, not a runtime dependency) —
+  used by `scripts/build_dict.py` to rank-order candidate readings and break ties that
+  rime-cantonese leaves ambiguous (e.g. `行` had 6 equal-weight readings; `平`/`重`/`坐`/
+  `識`/`近`/`聽`/`命`/`正` etc. all had un-ranked alternates)
+- New merge priority: `word.bin` = rime-cantonese → ToJyutping → `oral_hk.tsv` (highest);
+  `char.bin` = Unihan → rime-cantonese → ToJyutping → `oral_hk.tsv` (highest)
+- Fixes previously-wrong output for common sentences, e.g.:
+  - `行為不檢` : `haang4 wai4 ...` → `hang4 wai4 ...`
+  - `呢件衫好平` : `... ping4` → `... peng4`
+  - `個袋好重` : `... cung4` → `... cung5`
+  - `自由行` : `... haang4` → `... hang4`
+- Excludes 2 ToJyutping word entries (`二六`, `四六`) that carry tone-sandhi'd colloquial
+  readings colliding with this library's own digit-by-digit number/year expansion, which
+  requires citation tones only (see CLAUDE.md's locked "v1 skips tone sandhi" decision)
+- 48 new gold-sentence regression tests in `tests/test_polyphone_regression.py`,
+  cross-validated against ToJyutping's own output
+
+### Removed
+- `jyut6ping3.phrase.dict.yaml` dropped from the rime-cantonese fetch — the file lacks the
+  `...` YAML front-matter separator our parser requires, so it was silently contributing
+  0 entries in every build since v1.0.0 (no behavior change; just stopped downloading
+  ~4.7 MB of unused data)
+
+[1.7.0]: https://github.com/typangaa/canto-hk-g2p/compare/v1.6.0...v1.7.0
+
 ## [1.6.0] — 2026-07-13
 
 ### Added

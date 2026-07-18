@@ -34,8 +34,10 @@ ORAL_HK_TSV = DATA_DIR / "oral_hk.tsv"
 RIME_FILES: List[Path] = [
     RAW_DIR / "rime-cantonese" / "jyut6ping3.chars.dict.yaml",
     RAW_DIR / "rime-cantonese" / "jyut6ping3.words.dict.yaml",
-    RAW_DIR / "rime-cantonese" / "jyut6ping3.phrase.dict.yaml",
     RAW_DIR / "rime-cantonese" / "jyut6ping3.lettered.dict.yaml",
+    # NOTE: jyut6ping3.phrase.dict.yaml intentionally excluded — it has no
+    # `...` YAML separator, so the parser below silently reads 0 entries
+    # from it (see scripts/fetch_data.py, which no longer downloads it).
 ]
 
 UNIHAN_READINGS = RAW_DIR / "unihan" / "Unihan_Readings.txt"
@@ -239,6 +241,65 @@ def load_unihan(path: Path) -> Dict[str, str]:
     return result
 
 
+def load_tojyutping() -> Tuple[Dict[str, str], Dict[str, str]]:
+    """
+    Load ToJyutping's trie data (build-time-only dependency, BSD-2-Clause).
+
+    Imports ToJyutping.Trie directly (no raw file fetch needed — the package
+    bundles and decodes its own trie.txt at import time). Walks the trie and
+    takes the rank-0 (most-likely) candidate reading for every entry.
+
+    Returns:
+        tojyutping_all   : dict[word -> jyutping]  (all entries, single- and multi-char)
+        tojyutping_chars : dict[char -> jyutping]  (single-char entries only)
+
+    Raises ImportError with a clear message if the `ToJyutping` package is not
+    installed (it's a build-time-only dependency, not listed in the wheel's
+    runtime requirements — see scripts/fetch_data.py for the pinned version).
+
+    Excludes multi-char words made entirely of bare Chinese digit characters
+    (e.g. `二六`, `四六`) — a handful of these carry tone-sandhi'd colloquial
+    readings (`ji6 luk1` instead of citation `ji6 luk6`) that collide with our
+    own normalizer's digit-by-digit year/number expansion (`digits_to_chars()`
+    in src/normalizer.rs emits exactly these character sequences and expects
+    citation tones — see CLAUDE.md's locked "v1 skips tone sandhi" decision).
+    """
+    try:
+        import ToJyutping.Trie as T
+    except ImportError as exc:
+        raise ImportError(
+            "ToJyutping is required to build the dictionary but is not installed. "
+            "Install it with:  pip install ToJyutping==3.2.0\n"
+            "(It is a build-time-only dependency; it is NOT bundled in the wheel.)"
+        ) from exc
+
+    BARE_DIGITS = set("零一二三四五六七八九")
+
+    tojyutping_all: Dict[str, str] = {}
+    tojyutping_chars: Dict[str, str] = {}
+
+    # Iterative trie walk using an explicit stack to avoid recursion limits.
+    stack: List[Tuple[object, str]] = [(T.root, "")]
+    while stack:
+        node, prefix = stack.pop()
+        if node.v:
+            if len(prefix) > 1 and all(c in BARE_DIGITS for c in prefix):
+                pass  # skip — reserved for our own digit-by-digit normalizer output
+            else:
+                reading = str(node.v[0])  # rank-0 = most-likely reading
+                tojyutping_all[prefix] = reading
+                if len(prefix) == 1:
+                    tojyutping_chars[prefix] = reading
+        for char, child in node.items():
+            stack.append((child, prefix + char))
+
+    print(
+        f"[tojyutping] loaded {len(tojyutping_all):,} entries "
+        f"({len(tojyutping_chars):,} single-char)"
+    )
+    return tojyutping_all, tojyutping_chars
+
+
 # ---------------------------------------------------------------------------
 # Binary writer
 # ---------------------------------------------------------------------------
@@ -333,22 +394,31 @@ def main() -> None:
     unihan_dict = load_unihan(UNIHAN_READINGS)
 
     # ------------------------------------------------------------------
+    # Step 3b: Load ToJyutping trie (build-time-only dep, BSD-2-Clause)
+    #   Rank-0 reading from CanCLID's curated trie; trusted over rime-
+    #   cantonese's raw first-occurrence pick for shared keys.
+    # ------------------------------------------------------------------
+    tojyutping_all, tojyutping_chars = load_tojyutping()
+
+    # ------------------------------------------------------------------
     # Step 4: Build word_entries
-    #   Priority: oral_dict > rime_all
-    #   Start from rime (all words), then overlay oral overrides.
+    #   Priority: oral_dict > tojyutping_all > rime_all
+    #   Apply in ascending priority so higher-priority layers overwrite.
     # ------------------------------------------------------------------
     word_entries: Dict[str, str] = {}
-    word_entries.update(rime_all)
-    word_entries.update(oral_dict)   # oral overrides rime for any shared keys
+    word_entries.update(rime_all)            # lowest priority
+    word_entries.update(tojyutping_all)      # overrides rime on shared keys; adds new keys
+    word_entries.update(oral_dict)           # oral overrides everything
 
     # ------------------------------------------------------------------
     # Step 5: Build char_entries (single chars only)
-    #   Priority: oral > rime_chars > unihan
+    #   Priority: oral > tojyutping_chars > rime_chars > unihan
     #   Apply in ascending priority so higher-priority layers overwrite.
     # ------------------------------------------------------------------
     char_entries: Dict[str, str] = {}
     char_entries.update(unihan_dict)          # lowest priority
     char_entries.update(rime_chars)           # rime overrides unihan
+    char_entries.update(tojyutping_chars)     # tojyutping overrides rime_chars
     for word, jyut in oral_dict.items():      # oral overrides everything
         if len(word) == 1:
             char_entries[word] = jyut
@@ -383,6 +453,8 @@ def main() -> None:
     print(f"  oral_hk entries          : {len(oral_dict):,}")
     print(f"  rime-cantonese (all)     : {len(rime_all):,}")
     print(f"  rime-cantonese (chars)   : {len(rime_chars):,}")
+    print(f"  tojyutping (all)         : {len(tojyutping_all):,}")
+    print(f"  tojyutping (chars)       : {len(tojyutping_chars):,}")
     print(f"  unihan kCantonese        : {len(unihan_dict):,}")
     print("=" * 60)
 

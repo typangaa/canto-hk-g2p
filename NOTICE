@@ -10,11 +10,13 @@ This product bundles data from the following third-party sources:
 1. rime-cantonese
    Source:  https://github.com/rime/rime-cantonese
    License: Creative Commons Attribution 4.0 International (CC BY 4.0)
-   Files:   jyut6ping3.dict.yaml, jyut6ping3.chars.dict.yaml,
-            jyut6ping3.words.dict.yaml, jyut6ping3.phrase.dict.yaml
-            (the jyut6ping3.maps.dict.yaml file is NOT included — it
-            carries ODbL v1.0 which is incompatible with this product's
-            permissive license stack)
+   Files:   jyut6ping3.chars.dict.yaml, jyut6ping3.words.dict.yaml,
+            jyut6ping3.lettered.dict.yaml
+            (jyut6ping3.phrase.dict.yaml is NOT included — it lacks the
+            `...` YAML front-matter separator our parser requires, so it
+            would silently contribute 0 entries; jyut6ping3.maps.dict.yaml
+            is NOT included — it carries ODbL v1.0 which is incompatible
+            with this product's permissive license stack)
    Credit:  CanCLID contributors (https://github.com/CanCLID)
 
 2. Unicode / Unihan Database
@@ -40,3 +42,12 @@ This product bundles data from the following third-party sources:
       the documentation and/or other materials provided with the
       distribution.
    Credit:  Carnegie Mellon University Speech Group
+
+5. ToJyutping (build-time only — its code and data are NOT bundled in this
+   product; used only while regenerating data/*.bin to rank-order polyphone
+   candidate readings, see scripts/build_dict.py::load_tojyutping())
+   Source:  https://github.com/CanCLID/ToJyutping
+   License: BSD 2-Clause
+   Copyright (c) 2024 Cantonese Computational Linguistics Infrastructure
+   Development Workgroup. All rights reserved.
+   Credit:  CanCLID contributors (https://github.com/CanCLID)

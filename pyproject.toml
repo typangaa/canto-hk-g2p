@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "canto-hk-g2p"
-version = "1.5.0"
+version = "1.7.0"
 description = "Fast Cantonese text-to-phoneme (G2P) converter — Jyutping with tone numbers"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -36,10 +36,14 @@ Changelog = "https://github.com/typangaa/canto-hk-g2p/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "maturin>=1.4"]
+# Only needed to regenerate data/*.bin via scripts/build_dict.py — NOT a
+# runtime dependency, NOT bundled in the wheel (see data/SOURCES.md).
+build = ["ToJyutping==3.2.0"]
 
 # PEP 735 dependency groups — used by uv (uv sync --group dev)
 [dependency-groups]
 dev = ["pytest>=7", "maturin>=1.4"]
+build = ["ToJyutping==3.2.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

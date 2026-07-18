@@ -6,7 +6,10 @@ Phase 1 data fetch — downloads rime-cantonese (CC-BY-4.0) and Unihan kCantones
 Run from repo root:
     python3 scripts/fetch_data.py
 
-No external deps — uses stdlib urllib only.
+No external deps for downloading — uses stdlib urllib only. ToJyutping is a
+build-time-only PyPI dependency (not bundled in the wheel); this script only
+verifies it is installed at the pinned version and records it in SOURCES.md —
+`build_dict.py` imports it directly to decode its trie data.
 """
 import hashlib
 import io
@@ -14,6 +17,7 @@ import os
 import sys
 import urllib.request
 import zipfile
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 # ── Pinned sources ──────────────────────────────────────────────────────────
@@ -23,12 +27,19 @@ RIME_DATE   = "2026-03-07"
 RIME_BASE   = f"https://raw.githubusercontent.com/rime/rime-cantonese/{RIME_COMMIT}"
 
 # CC-BY-4.0 files only — jyut6ping3.maps is ODbL (copyleft), excluded.
+# NOTE: jyut6ping3.phrase.dict.yaml is intentionally NOT fetched — it has no
+# `...` YAML front-matter separator, so build_dict.py's parser (which waits
+# for that separator before reading entries) silently reads 0 entries from it.
 RIME_FILES = [
     "jyut6ping3.chars.dict.yaml",    # ~345 KB — single-char readings
     "jyut6ping3.words.dict.yaml",    # ~2.5 MB — word readings (main polyphone resolver)
-    "jyut6ping3.phrase.dict.yaml",   # ~4.7 MB — phrase readings
     "jyut6ping3.lettered.dict.yaml", # ~23 KB  — mixed CJK+Latin entries
 ]
+
+# ToJyutping — BSD-2-Clause (build-time only; decodes rank-ordered polyphone
+# candidates for words + single chars, used to break ties that rime-cantonese
+# leaves ambiguous, e.g. 行/重/平 with multiple equal-weight readings).
+TOJYUTPING_VERSION = "3.2.0"
 
 # Unicode Unihan — Unicode License v3 (permissive)
 # Unihan_Readings.txt is packaged inside Unihan.zip at the latest/ path.
@@ -81,7 +92,7 @@ def main() -> None:
     checksums: dict[str, str] = {}
 
     # ── 1. rime-cantonese ─────────────────────────────────────────────────
-    print(f"\n[1/3] rime-cantonese  (commit {RIME_COMMIT}, CC-BY-4.0)")
+    print(f"\n[1/4] rime-cantonese  (commit {RIME_COMMIT}, CC-BY-4.0)")
     for fname in RIME_FILES:
         dest = RIME_DIR / fname
         if dest.exists():
@@ -91,7 +102,7 @@ def main() -> None:
             checksums[fname] = download(f"{RIME_BASE}/{fname}", dest)
 
     # ── 2. Unihan_Readings.txt (from Unihan.zip) ──────────────────────────
-    print(f"\n[2/3] Unihan_Readings.txt  (Unicode License v3, via Unihan.zip)")
+    print(f"\n[2/4] Unihan_Readings.txt  (Unicode License v3, via Unihan.zip)")
     unihan_dest = UNIHAN_DIR / "Unihan_Readings.txt"
     if unihan_dest.exists():
         print(f"  Unihan_Readings.txt  already present, skipping")
@@ -118,7 +129,7 @@ def main() -> None:
 
     # ── 3. CMU Pronouncing Dictionary ─────────────────────────────────────
     CMUDICT_DIR.mkdir(parents=True, exist_ok=True)
-    print("\n[3/3] CMU Pronouncing Dictionary  (BSD-2-Clause)")
+    print("\n[3/4] CMU Pronouncing Dictionary  (BSD-2-Clause)")
     cmudict_dest = CMUDICT_DIR / "cmudict.dict"
     if cmudict_dest.exists():
         print("  cmudict.dict  already present, skipping")
@@ -126,7 +137,27 @@ def main() -> None:
     else:
         checksums["cmudict.dict"] = download(CMUDICT_URL, cmudict_dest)
 
-    # ── 4. Write SOURCES.md ───────────────────────────────────────────────
+    # ── 4. ToJyutping (build-time dependency; not downloaded, just checked) ──
+    print(f"\n[4/4] ToJyutping  (build-time dependency, BSD-2-Clause)")
+    try:
+        installed_version = version("ToJyutping")
+    except PackageNotFoundError:
+        print(
+            f"  ERROR: ToJyutping not installed. Run: pip install ToJyutping=={TOJYUTPING_VERSION}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if installed_version != TOJYUTPING_VERSION:
+        print(
+            f"  WARN: installed ToJyutping=={installed_version}, "
+            f"pinned version is {TOJYUTPING_VERSION}. "
+            f"Run: pip install ToJyutping=={TOJYUTPING_VERSION}",
+            file=sys.stderr,
+        )
+    else:
+        print(f"  ToJyutping=={installed_version}  (matches pinned version)")
+
+    # ── 5. Write SOURCES.md ───────────────────────────────────────────────
     sources_path = REPO_ROOT / "data" / "SOURCES.md"
     lines = [
         "# Data sources\n",
@@ -158,6 +189,14 @@ def main() -> None:
         "- Credit: Carnegie Mellon University Speech Group\n",
         f"- File: `cmudict.dict`  sha256={checksums.get('cmudict.dict', 'unknown')[:16]}…\n",
         "\n",
+        "## ToJyutping (build-time only — not bundled in the wheel)\n",
+        f"- Version: `{installed_version}` (pinned: `{TOJYUTPING_VERSION}`)\n",
+        "- License: BSD-2-Clause\n",
+        "- Copyright: Cantonese Computational Linguistics Infrastructure Development Workgroup (CanCLID)\n",
+        "- Repo: https://github.com/CanCLID/ToJyutping\n",
+        "- Used at build time only, to break polyphone ties left ambiguous by rime-cantonese\n",
+        "  (rank-0 / most-likely reading per word and per character, from its trie).\n",
+        "\n",
         "## Hand-curated\n",
         "- `data/oral_hk.tsv` — HK colloquial characters (~60 entries)\n",
         "- License: Apache-2.0 (same as canto-g2p)\n",
@@ -165,7 +204,7 @@ def main() -> None:
     sources_path.write_text("".join(lines), encoding="utf-8")
     print(f"\nOK  Wrote {sources_path.relative_to(REPO_ROOT)}")
 
-    # ── 5. Summary ────────────────────────────────────────────────────────
+    # ── 6. Summary ────────────────────────────────────────────────────────
     rime_total = sum((RIME_DIR / f).stat().st_size for f in RIME_FILES)
     unihan_size = unihan_dest.stat().st_size
     cmudict_size = cmudict_dest.stat().st_size
