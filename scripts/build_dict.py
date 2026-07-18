@@ -19,7 +19,7 @@ Run from repo root:
 import struct
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
 # ---------------------------------------------------------------------------
 # Paths (relative to repo root)
@@ -108,13 +108,19 @@ def _parse_weight(weight_str: str) -> int:
     return -1
 
 
-def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, str]]:
+def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, str], Set[str]]:
     """
     Load rime-cantonese dict YAML files.
 
     Returns:
         rime_all   : dict[word -> jyutping]  (all words, single- and multi-char)
         rime_chars : dict[char -> jyutping]  (single-char entries only)
+        rime_tied  : set of words whose picked reading was an ARBITRARY tie-break
+                     — i.e. the source YAML had >=2 distinct readings at the same
+                     max weight (most commonly: neither has an explicit weight at
+                     all, e.g. 正經 appears as both "zing1 ging1" and "zing3 ging1"
+                     with no weight column). "First occurrence wins" in that case
+                     is not a real disambiguation signal — see resolve_tied_readings().
 
     Deduplication rules:
     - Same key in an EARLIER file wins over a LATER file.
@@ -125,6 +131,7 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
     # Tracks the current best (jyutping, weight) for each key across all files.
     best_all: Dict[str, Tuple[str, int]] = {}
     best_chars: Dict[str, Tuple[str, int]] = {}
+    tied_words: Set[str] = set()
 
     for path in paths:
         if not path.exists():
@@ -136,6 +143,7 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
 
         # Collect per-file best entries before merging (so earlier files lock keys)
         file_best: Dict[str, Tuple[str, int]] = {}
+        file_tied: Set[str] = set()
 
         with open(path, encoding="utf-8") as fh:
             for raw in fh:
@@ -167,9 +175,12 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
                     file_best[word] = (jyutping, weight)
                     file_entries += 1
                 else:
-                    _, existing_weight = file_best[word]
+                    existing_jyut, existing_weight = file_best[word]
                     if weight > existing_weight:
                         file_best[word] = (jyutping, weight)
+                        file_tied.discard(word)  # strict new winner — no longer a tie
+                    elif weight == existing_weight and jyutping != existing_jyut:
+                        file_tied.add(word)
 
         # Merge file_best into global dicts — earlier files already won
         new_from_file = 0
@@ -179,6 +190,8 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
             if word not in best_all:
                 best_all[word] = (jyut, w)
                 new_from_file += 1
+                if word in file_tied:
+                    tied_words.add(word)
             # Keys already in best_all come from an earlier file — do not overwrite
 
             if is_single and word not in best_chars:
@@ -191,7 +204,8 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
 
     rime_all = {k: v[0] for k, v in best_all.items()}
     rime_chars = {k: v[0] for k, v in best_chars.items()}
-    return rime_all, rime_chars
+    print(f"[rime]      {len(tied_words):,} words had an arbitrary tie-break (see rime_tied)")
+    return rime_all, rime_chars, tied_words
 
 
 def load_unihan(path: Path) -> Dict[str, str]:
@@ -300,6 +314,43 @@ def load_tojyutping() -> Tuple[Dict[str, str], Dict[str, str]]:
     return tojyutping_all, tojyutping_chars
 
 
+def resolve_tied_readings(tied_words: Set[str]) -> Dict[str, str]:
+    """
+    Re-disambiguate rime-cantonese words whose reading was an arbitrary
+    tie-break (see load_rime_cantonese()'s rime_tied return value).
+
+    load_tojyutping() above only overrides a tied word when it exists as an
+    exact node in ToJyutping's trie — about 56% of tied rime words don't
+    (e.g. 正經 has no multi-char trie entry, only its individual chars 正/經
+    do). This function instead calls ToJyutping.get_jyutping_text(), which
+    applies ToJyutping's own context-aware segmentation across the whole
+    word rather than a single exact-match lookup, and resolves most of the
+    remainder correctly (verified: 345/537 valid-format cases changed the
+    pick, cross-checked against the tied candidates during Phase 7a.1 dev).
+
+    Only accepts the result when its syllable count matches the word's
+    character count (sanity check against ToJyutping segmentation quirks
+    e.g. splitting on an internal word boundary it thinks it sees).
+    """
+    import ToJyutping
+
+    overrides: Dict[str, str] = {}
+    skipped = 0
+    for word in tied_words:
+        gjt = ToJyutping.get_jyutping_text(word)
+        if len(gjt.split()) == len(word):
+            overrides[word] = gjt
+        else:
+            skipped += 1
+
+    print(
+        f"[tojyutping] resolved {len(overrides):,}/{len(tied_words):,} tied "
+        f"rime-cantonese readings via get_jyutping_text() "
+        f"({skipped:,} skipped — syllable/char count mismatch)"
+    )
+    return overrides
+
+
 # ---------------------------------------------------------------------------
 # Binary writer
 # ---------------------------------------------------------------------------
@@ -386,7 +437,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Step 2: Load rime-cantonese YAML files
     # ------------------------------------------------------------------
-    rime_all, rime_chars = load_rime_cantonese(RIME_FILES)
+    rime_all, rime_chars, rime_tied = load_rime_cantonese(RIME_FILES)
 
     # ------------------------------------------------------------------
     # Step 3: Load Unihan (lowest priority, single-char fallback)
@@ -401,13 +452,20 @@ def main() -> None:
     tojyutping_all, tojyutping_chars = load_tojyutping()
 
     # ------------------------------------------------------------------
+    # Step 3c: Resolve rime's arbitrary tie-breaks via ToJyutping's own
+    #   segmentation (get_jyutping_text), not just exact trie-node hits.
+    # ------------------------------------------------------------------
+    tied_overrides = resolve_tied_readings(rime_tied)
+
+    # ------------------------------------------------------------------
     # Step 4: Build word_entries
-    #   Priority: oral_dict > tojyutping_all > rime_all
+    #   Priority: oral_dict > tied_overrides > tojyutping_all > rime_all
     #   Apply in ascending priority so higher-priority layers overwrite.
     # ------------------------------------------------------------------
     word_entries: Dict[str, str] = {}
     word_entries.update(rime_all)            # lowest priority
     word_entries.update(tojyutping_all)      # overrides rime on shared keys; adds new keys
+    word_entries.update(tied_overrides)      # re-disambiguates rime ties tojyutping_all missed
     word_entries.update(oral_dict)           # oral overrides everything
 
     # ------------------------------------------------------------------
@@ -455,6 +513,8 @@ def main() -> None:
     print(f"  rime-cantonese (chars)   : {len(rime_chars):,}")
     print(f"  tojyutping (all)         : {len(tojyutping_all):,}")
     print(f"  tojyutping (chars)       : {len(tojyutping_chars):,}")
+    print(f"  rime tied (arbitrary)    : {len(rime_tied):,}")
+    print(f"  tied resolved via gjt()  : {len(tied_overrides):,}")
     print(f"  unihan kCantonese        : {len(unihan_dict):,}")
     print("=" * 60)
 

@@ -35,10 +35,10 @@ jobs:
 
       - name: Fetch raw data sources
         if: steps.cache-data.outputs.cache-hit != 'true'
-        run: uv run python scripts/fetch_data.py
+        run: uv run --group build python scripts/fetch_data.py
 
       - name: Build binary dicts
-        run: uv run python scripts/build_dict.py
+        run: uv run --group build python scripts/build_dict.py
 
       - name: Build wheels (manylinux)
         uses: PyO3/maturin-action@v1
@@ -83,10 +83,10 @@ jobs:
 
       - name: Fetch raw data sources
         if: steps.cache-data.outputs.cache-hit != 'true'
-        run: uv run python scripts/fetch_data.py
+        run: uv run --group build python scripts/fetch_data.py
 
       - name: Build binary dicts
-        run: uv run python scripts/build_dict.py
+        run: uv run --group build python scripts/build_dict.py
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
@@ -123,10 +123,10 @@ jobs:
 
       - name: Fetch raw data sources
         if: steps.cache-data.outputs.cache-hit != 'true'
-        run: uv run python scripts/fetch_data.py
+        run: uv run --group build python scripts/fetch_data.py
 
       - name: Build binary dicts
-        run: uv run python scripts/build_dict.py
+        run: uv run --group build python scripts/build_dict.py
 
       - name: Build wheels
         uses: PyO3/maturin-action@v1
@@ -152,10 +152,10 @@ jobs:
           python-version: "3.12"
 
       - name: Fetch raw data sources
-        run: uv run python scripts/fetch_data.py
+        run: uv run --group build python scripts/fetch_data.py
 
       - name: Build binary dicts
-        run: uv run python scripts/build_dict.py
+        run: uv run --group build python scripts/build_dict.py
 
       # maturin-action tries to pip install cffi/patchelf into the uv-managed
       # .venv, which lacks pip by default. Add pip first.

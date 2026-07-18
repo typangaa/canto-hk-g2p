@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] — 2026-07-18
+
+### Fixed
+
+**Residual polyphone tie-break gap in `word.bin`**
+- v1.7.0's `load_tojyutping()` only overrode a rime-cantonese tie when the word
+  existed as an exact multi-char node in ToJyutping's trie — of the 1,428
+  rime words with a genuine weight-tie (2+ equally-weighted, most often
+  unweighted, candidate readings), only 692 had such a node; the remaining
+  736 kept falling back to "first occurrence in file wins", which is not a
+  real disambiguation signal (e.g. `正經` had both `zing1 ging1` and
+  `zing3 ging1` at equal weight, and the wrong one was being picked)
+- Added `scripts/build_dict.py::resolve_tied_readings()`, which calls
+  ToJyutping's `get_jyutping_text()` — its own context-aware segmentation
+  across the whole word, not a single exact-match lookup — for every tied
+  rime word. Resolved 1,293 of 1,428 (the rest skipped on a syllable/char
+  count sanity-check mismatch and keep their previous reading)
+- `load_rime_cantonese()` now also returns the tied-word set so this can run;
+  new merge priority: `oral_hk.tsv` > tied_overrides > ToJyutping trie >
+  rime-cantonese (was: `oral_hk.tsv` > ToJyutping trie > rime-cantonese)
+- Fixes e.g.: `一本正經` (`zing1`→`zing3`), `沉重` (`zung6`→`cung5`),
+  `處理`/`處境` (`cyu2`→`cyu5`), `請問`/`請客` (`cing2`→`ceng2`),
+  `廚師` (`ceoi4`→`cyu4`)
+- 5 new gold-sentence regression tests added to `tests/test_polyphone_regression.py`
+
+[1.7.1]: https://github.com/typangaa/canto-hk-g2p/compare/v1.7.0...v1.7.1
+
 ## [1.7.0] — 2026-07-18
 
 ### Fixed

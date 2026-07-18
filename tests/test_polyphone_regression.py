@@ -1,5 +1,5 @@
 """
-Polyphone / 文白異讀 regression suite (v1.7.0).
+Polyphone / 文白異讀 regression suite (v1.7.0, extended in v1.7.1).
 
 Gold sentences targeting characters with multiple Jyutping readings where
 context (word segmentation) must pick the right one — e.g. 行 (haang4 "walk" /
@@ -17,6 +17,12 @@ polyphone tie-breaking (see scripts/build_dict.py::load_tojyutping()). This
 suite exists to catch regressions in the dict merge priority, NOT to assert
 one true Cantonese pronunciation — see CLAUDE.md for the documented v1 scope
 (dictionary/word-boundary disambiguation only, no neural context model).
+
+v1.7.1 added scripts/build_dict.py::resolve_tied_readings(), which re-resolves
+rime-cantonese words that had an arbitrary weight-tie (e.g. 正經 had both
+"zing1 ging1" and "zing3 ging1" at equal/no weight) using ToJyutping's
+get_jyutping_text() — its own context-aware segmentation, not just an exact
+trie-node lookup. The 正經/沉重/處理/請問 cases below were wrong before v1.7.1.
 """
 import pytest
 
@@ -89,6 +95,13 @@ GOLD_SENTENCES = [
     # 得 — dak1 "can, get"
     ("得閒去街", "dak1 haan4 heoi3 gaai1"),
     ("唔得閒", "m4 dak1 haan4"),
+    # v1.7.1 — words with no ToJyutping trie entry, rescued from an arbitrary
+    # rime weight-tie by resolve_tied_readings() / get_jyutping_text()
+    ("一本正經", "jat1 bun2 zing3 ging1"),
+    ("個袋好沉重", "go3 doi2 hou2 cam4 cung5"),
+    ("處理好呢件事", "cyu5 lei5 hou2 ni1 gin6 si6"),
+    ("請問洗手間喺邊", "ceng2 man6 sai2 sau2 gaan1 hai2 bin1"),
+    ("佢係廚師", "keoi5 hai6 cyu4 si1"),
 ]
 
 
