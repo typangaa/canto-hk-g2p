@@ -47,6 +47,8 @@ UNIHAN_READINGS = RAW_DIR / "unihan" / "Unihan_Readings.txt"
 PKG_DATA_DIR = REPO_ROOT / "python" / "canto_hk_g2p" / "data"
 OUT_WORD_BIN = PKG_DATA_DIR / "word.bin"
 OUT_CHAR_BIN = PKG_DATA_DIR / "char.bin"
+OUT_WORD_CANDIDATES_BIN = PKG_DATA_DIR / "word_candidates.bin"
+OUT_CHAR_CANDIDATES_BIN = PKG_DATA_DIR / "char_candidates.bin"
 CMUDICT_SRC = RAW_DIR / "cmudict" / "cmudict.dict"
 CMUDICT_DST = PKG_DATA_DIR / "cmudict.dict"
 
@@ -108,19 +110,25 @@ def _parse_weight(weight_str: str) -> int:
     return -1
 
 
-def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, str], Set[str]]:
+def load_rime_cantonese(
+    paths: List[Path],
+) -> Tuple[Dict[str, str], Dict[str, str], Set[str], Dict[str, List[str]]]:
     """
     Load rime-cantonese dict YAML files.
 
     Returns:
-        rime_all   : dict[word -> jyutping]  (all words, single- and multi-char)
-        rime_chars : dict[char -> jyutping]  (single-char entries only)
-        rime_tied  : set of words whose picked reading was an ARBITRARY tie-break
-                     — i.e. the source YAML had >=2 distinct readings at the same
-                     max weight (most commonly: neither has an explicit weight at
-                     all, e.g. 正經 appears as both "zing1 ging1" and "zing3 ging1"
-                     with no weight column). "First occurrence wins" in that case
-                     is not a real disambiguation signal — see resolve_tied_readings().
+        rime_all     : dict[word -> jyutping]  (all words, single- and multi-char)
+        rime_chars    : dict[char -> jyutping]  (single-char entries only)
+        rime_tied     : set of words whose picked reading was an ARBITRARY tie-break
+                        — i.e. the source YAML had >=2 distinct readings at the same
+                        max weight (most commonly: neither has an explicit weight at
+                        all, e.g. 正經 appears as both "zing1 ging1" and "zing3 ging1"
+                        with no weight column). "First occurrence wins" in that case
+                        is not a real disambiguation signal — see resolve_tied_readings().
+        rime_readings : dict[word -> list of distinct readings], populated ONLY for
+                        words in rime_tied, in first-seen order — the raw candidate
+                        material for build_candidates() before ToJyutping/tie-break
+                        resolution picks a winner.
 
     Deduplication rules:
     - Same key in an EARLIER file wins over a LATER file.
@@ -132,6 +140,7 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
     best_all: Dict[str, Tuple[str, int]] = {}
     best_chars: Dict[str, Tuple[str, int]] = {}
     tied_words: Set[str] = set()
+    readings_all: Dict[str, List[str]] = {}
 
     for path in paths:
         if not path.exists():
@@ -144,6 +153,7 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
         # Collect per-file best entries before merging (so earlier files lock keys)
         file_best: Dict[str, Tuple[str, int]] = {}
         file_tied: Set[str] = set()
+        file_readings: Dict[str, List[str]] = {}
 
         with open(path, encoding="utf-8") as fh:
             for raw in fh:
@@ -173,14 +183,19 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
                 # Within-file: keep highest weight (first occurrence wins on tie)
                 if word not in file_best:
                     file_best[word] = (jyutping, weight)
+                    file_readings[word] = [jyutping]
                     file_entries += 1
                 else:
                     existing_jyut, existing_weight = file_best[word]
                     if weight > existing_weight:
                         file_best[word] = (jyutping, weight)
                         file_tied.discard(word)  # strict new winner — no longer a tie
+                        if jyutping not in file_readings[word]:
+                            file_readings[word].insert(0, jyutping)
                     elif weight == existing_weight and jyutping != existing_jyut:
                         file_tied.add(word)
+                        if jyutping not in file_readings[word]:
+                            file_readings[word].append(jyutping)
 
         # Merge file_best into global dicts — earlier files already won
         new_from_file = 0
@@ -192,6 +207,7 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
                 new_from_file += 1
                 if word in file_tied:
                     tied_words.add(word)
+                    readings_all[word] = file_readings[word]
             # Keys already in best_all come from an earlier file — do not overwrite
 
             if is_single and word not in best_chars:
@@ -205,7 +221,7 @@ def load_rime_cantonese(paths: List[Path]) -> Tuple[Dict[str, str], Dict[str, st
     rime_all = {k: v[0] for k, v in best_all.items()}
     rime_chars = {k: v[0] for k, v in best_chars.items()}
     print(f"[rime]      {len(tied_words):,} words had an arbitrary tie-break (see rime_tied)")
-    return rime_all, rime_chars, tied_words
+    return rime_all, rime_chars, tied_words, readings_all
 
 
 def load_unihan(path: Path) -> Dict[str, str]:
@@ -255,17 +271,25 @@ def load_unihan(path: Path) -> Dict[str, str]:
     return result
 
 
-def load_tojyutping() -> Tuple[Dict[str, str], Dict[str, str]]:
+def load_tojyutping() -> Tuple[Dict[str, str], Dict[str, str], Dict[str, List[str]], Dict[str, List[str]]]:
     """
     Load ToJyutping's trie data (build-time-only dependency, BSD-2-Clause).
 
     Imports ToJyutping.Trie directly (no raw file fetch needed — the package
     bundles and decodes its own trie.txt at import time). Walks the trie and
-    takes the rank-0 (most-likely) candidate reading for every entry.
+    takes the rank-0 (most-likely) candidate reading for every entry, while
+    also keeping the full rank-ordered candidate list for entries that have
+    more than one — this is the primary source for the Candidates API
+    (Phase 7b-2): ToJyutping's own ranking is more trustworthy than our own
+    tie-break heuristics because it reflects that package's context modelling.
 
     Returns:
-        tojyutping_all   : dict[word -> jyutping]  (all entries, single- and multi-char)
-        tojyutping_chars : dict[char -> jyutping]  (single-char entries only)
+        tojyutping_all        : dict[word -> jyutping]  (rank-0 reading; all entries)
+        tojyutping_chars      : dict[char -> jyutping]  (rank-0 reading; single-char only)
+        tojyutping_candidates : dict[word -> [readings]] rank-ordered, only for
+                                 entries with 2+ distinct candidate readings
+                                 (single- and multi-char)
+        tojyutping_char_candidates : same, restricted to single-char keys
 
     Raises ImportError with a clear message if the `ToJyutping` package is not
     installed (it's a build-time-only dependency, not listed in the wheel's
@@ -291,6 +315,8 @@ def load_tojyutping() -> Tuple[Dict[str, str], Dict[str, str]]:
 
     tojyutping_all: Dict[str, str] = {}
     tojyutping_chars: Dict[str, str] = {}
+    tojyutping_candidates: Dict[str, List[str]] = {}
+    tojyutping_char_candidates: Dict[str, List[str]] = {}
 
     # Iterative trie walk using an explicit stack to avoid recursion limits.
     stack: List[Tuple[object, str]] = [(T.root, "")]
@@ -304,14 +330,29 @@ def load_tojyutping() -> Tuple[Dict[str, str], Dict[str, str]]:
                 tojyutping_all[prefix] = reading
                 if len(prefix) == 1:
                     tojyutping_chars[prefix] = reading
+
+                # Dedupe consecutive-equal ranks while preserving rank order.
+                distinct: List[str] = []
+                seen: Set[str] = set()
+                for candidate in node.v:
+                    s = str(candidate)
+                    if s not in seen:
+                        seen.add(s)
+                        distinct.append(s)
+                if len(distinct) > 1:
+                    tojyutping_candidates[prefix] = distinct
+                    if len(prefix) == 1:
+                        tojyutping_char_candidates[prefix] = distinct
         for char, child in node.items():
             stack.append((child, prefix + char))
 
     print(
         f"[tojyutping] loaded {len(tojyutping_all):,} entries "
-        f"({len(tojyutping_chars):,} single-char)"
+        f"({len(tojyutping_chars):,} single-char); "
+        f"{len(tojyutping_candidates):,} with 2+ ranked candidates "
+        f"({len(tojyutping_char_candidates):,} single-char)"
     )
-    return tojyutping_all, tojyutping_chars
+    return tojyutping_all, tojyutping_chars, tojyutping_candidates, tojyutping_char_candidates
 
 
 def resolve_tied_readings(tied_words: Set[str]) -> Dict[str, str]:
@@ -349,6 +390,46 @@ def resolve_tied_readings(tied_words: Set[str]) -> Dict[str, str]:
         f"({skipped:,} skipped — syllable/char count mismatch)"
     )
     return overrides
+
+
+def build_candidates(
+    word_entries: Dict[str, str],
+    rime_readings: Dict[str, List[str]],
+    tojyutping_candidates: Dict[str, List[str]],
+) -> Dict[str, str]:
+    """
+    Merge candidate-reading sources into the sparse Candidates API sidecar
+    (Phase 7b-2). Only keys with 2+ distinct known readings are included —
+    most dictionary entries have exactly one reading and need no row here.
+
+    Priority:
+    - ToJyutping's own rank-ordered candidate list wins outright when present
+      — it reflects that package's own context-aware ranking, which is more
+      trustworthy than our local tie-break heuristics (see resolve_tied_readings).
+    - Otherwise, fall back to rime-cantonese's raw tied readings, with the
+      winning reading already chosen for word_entries (by resolve_tied_readings
+      or plain first-occurrence) moved to the front.
+
+    Returns dict[key -> "reading1|reading2|..."] ready for write_bin().
+    """
+    result: Dict[str, List[str]] = {}
+
+    for word, candidates in tojyutping_candidates.items():
+        result[word] = candidates
+
+    for word, readings in rime_readings.items():
+        if word in result:
+            continue  # ToJyutping's ranking already covers this key
+        distinct: List[str] = list(dict.fromkeys(readings))  # dedupe, preserve order
+        winner = word_entries.get(word)
+        if winner is not None:
+            if winner in distinct:
+                distinct.remove(winner)
+            distinct.insert(0, winner)
+        if len(distinct) > 1:
+            result[word] = distinct
+
+    return {word: "|".join(candidates) for word, candidates in result.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -437,7 +518,7 @@ def main() -> None:
     # ------------------------------------------------------------------
     # Step 2: Load rime-cantonese YAML files
     # ------------------------------------------------------------------
-    rime_all, rime_chars, rime_tied = load_rime_cantonese(RIME_FILES)
+    rime_all, rime_chars, rime_tied, rime_readings = load_rime_cantonese(RIME_FILES)
 
     # ------------------------------------------------------------------
     # Step 3: Load Unihan (lowest priority, single-char fallback)
@@ -449,7 +530,9 @@ def main() -> None:
     #   Rank-0 reading from CanCLID's curated trie; trusted over rime-
     #   cantonese's raw first-occurrence pick for shared keys.
     # ------------------------------------------------------------------
-    tojyutping_all, tojyutping_chars = load_tojyutping()
+    tojyutping_all, tojyutping_chars, tojyutping_candidates, tojyutping_char_candidates = (
+        load_tojyutping()
+    )
 
     # ------------------------------------------------------------------
     # Step 3c: Resolve rime's arbitrary tie-breaks via ToJyutping's own
@@ -482,6 +565,22 @@ def main() -> None:
             char_entries[word] = jyut
 
     # ------------------------------------------------------------------
+    # Step 5b: Build Candidates API sidecars (Phase 7b-2) — sparse, only
+    #   keys with 2+ distinct known readings. oral_hk entries are excluded
+    #   entirely: a hand-curated override is a final decision, not ambiguity
+    #   to surface.
+    # ------------------------------------------------------------------
+    word_candidates = build_candidates(word_entries, rime_readings, tojyutping_candidates)
+    for word in oral_dict:
+        word_candidates.pop(word, None)
+
+    rime_char_readings = {w: r for w, r in rime_readings.items() if len(w) == 1}
+    char_candidates = build_candidates(char_entries, rime_char_readings, tojyutping_char_candidates)
+    for word in oral_dict:
+        if len(word) == 1:
+            char_candidates.pop(word, None)
+
+    # ------------------------------------------------------------------
     # Step 6: Write binary files
     # ------------------------------------------------------------------
     print()
@@ -489,6 +588,10 @@ def main() -> None:
     word_bytes = write_bin(word_entries, OUT_WORD_BIN)
     print(f"[build]     Writing {OUT_CHAR_BIN} ...")
     char_bytes = write_bin(char_entries, OUT_CHAR_BIN)
+    print(f"[build]     Writing {OUT_WORD_CANDIDATES_BIN} ...")
+    word_candidates_bytes = write_bin(word_candidates, OUT_WORD_CANDIDATES_BIN)
+    print(f"[build]     Writing {OUT_CHAR_CANDIDATES_BIN} ...")
+    char_candidates_bytes = write_bin(char_candidates, OUT_CHAR_CANDIDATES_BIN)
 
     # ------------------------------------------------------------------
     # Validate output files
@@ -496,6 +599,8 @@ def main() -> None:
     print()
     validate_bin(OUT_WORD_BIN, len(word_entries))
     validate_bin(OUT_CHAR_BIN, len(char_entries))
+    validate_bin(OUT_WORD_CANDIDATES_BIN, len(word_candidates))
+    validate_bin(OUT_CHAR_CANDIDATES_BIN, len(char_candidates))
 
     # ------------------------------------------------------------------
     # Final stats
@@ -504,9 +609,12 @@ def main() -> None:
     print("=" * 60)
     print("Build complete — summary")
     print("=" * 60)
-    print(f"  word.bin : {len(word_entries):>8,} entries   {word_bytes:>10,} bytes  ({word_bytes / 1024:.1f} KiB)")
-    print(f"  char.bin : {len(char_entries):>8,} entries   {char_bytes:>10,} bytes  ({char_bytes / 1024:.1f} KiB)")
-    print(f"  total    :                     {word_bytes + char_bytes:>10,} bytes  ({(word_bytes + char_bytes) / 1024:.1f} KiB)")
+    print(f"  word.bin            : {len(word_entries):>8,} entries   {word_bytes:>10,} bytes  ({word_bytes / 1024:.1f} KiB)")
+    print(f"  char.bin            : {len(char_entries):>8,} entries   {char_bytes:>10,} bytes  ({char_bytes / 1024:.1f} KiB)")
+    print(f"  word_candidates.bin : {len(word_candidates):>8,} entries   {word_candidates_bytes:>10,} bytes  ({word_candidates_bytes / 1024:.1f} KiB)")
+    print(f"  char_candidates.bin : {len(char_candidates):>8,} entries   {char_candidates_bytes:>10,} bytes  ({char_candidates_bytes / 1024:.1f} KiB)")
+    total = word_bytes + char_bytes + word_candidates_bytes + char_candidates_bytes
+    print(f"  total               :                     {total:>10,} bytes  ({total / 1024:.1f} KiB)")
     print()
     print(f"  oral_hk entries          : {len(oral_dict):,}")
     print(f"  rime-cantonese (all)     : {len(rime_all):,}")
@@ -516,6 +624,8 @@ def main() -> None:
     print(f"  rime tied (arbitrary)    : {len(rime_tied):,}")
     print(f"  tied resolved via gjt()  : {len(tied_overrides):,}")
     print(f"  unihan kCantonese        : {len(unihan_dict):,}")
+    print(f"  word candidates (2+)     : {len(word_candidates):,}")
+    print(f"  char candidates (2+)     : {len(char_candidates):,}")
     print("=" * 60)
 
     # Copy cmudict.dict into package data for bundling

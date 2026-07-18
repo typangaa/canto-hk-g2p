@@ -46,6 +46,7 @@ The library is a standalone open-source deliverable — Cantonese TTS pre-proces
   - Phone numbers: digit-by-digit expansion
 - **Polyphone disambiguation** via longest-match word-level segmentation (~85% accuracy)
 - **`user_dict` runtime overrides** — `Pipeline(user_dict={"行": "hong4"})` locks a pronunciation above every bundled dictionary, and participates in segmentation so multi-char overrides aren't split apart
+- **`convert_candidates()`** — Candidates API: rank-ordered alternate readings for polyphones (`正經` → `["zing3 ging1", "zing1 ging1"]`), instead of committing to a single one
 - **Rayon parallel batch processing** — scales to large corpora
 - **Zero runtime Python dependencies** — pronunciation dictionaries bundled in the wheel
 - **`convert_detailed()`** — structured `(token, jyutping, lang)` output with language tags (`yue` / `en` / `punct`)
@@ -301,6 +302,50 @@ p.convert_detailed("")
 
 ---
 
+### `convert_candidates(text: str) -> list[tuple[str, list[str], str]]`
+
+The Candidates API — the text-level sibling of `convert_detailed()`. Returns
+`(token, candidate_readings, lang)` triples, where `candidate_readings` is a
+rank-ordered list (most-likely first) instead of a single committed string.
+
+| Field | Type | Values |
+|---|---|---|
+| `token` | `str` | The original text span for this token |
+| `candidate_readings` | `list[str]` | Rank-ordered known readings for this token; length 1 unless ambiguous |
+| `lang` | `str` | `"yue"` (Cantonese), `"en"` (English / Latin), `"punct"` (punctuation) |
+
+`candidate_readings[0]` always equals the reading `convert()`/`convert_detailed()`
+commits to for that token. A list of length 1 means the bundled data has no
+known alternate reading for that exact token (this is the common case — most
+words and characters are unambiguous). Ambiguity is only reported at the
+granularity the bundled dictionaries track it: a whole multi-char word, or a
+single character. A `user_dict` override (see above) always collapses to a
+single candidate — an override is a final decision, not ambiguity to report.
+
+```python
+p.convert_candidates("正經")
+# → [("正經", ["zing3 ging1", "zing1 ging1"], "yue")]   (known word-level polyphone)
+
+p.convert_candidates("香港")
+# → [("香港", ["hoeng1 gong2"], "yue")]                  (no known ambiguity)
+
+p.convert_candidates("行")
+# → [("行", ["haang4", "hang4", "hong4", ...], "yue")]   (known char-level polyphone)
+
+p2 = Pipeline(user_dict={"正經": "zing1 ging1"})
+p2.convert_candidates("正經")
+# → [("正經", ["zing1 ging1"], "yue")]                   (override collapses ambiguity)
+```
+
+**Known limitation**: ambiguity is not surfaced across an out-of-vocabulary
+multi-char token's individual characters — such a token falls back to
+`convert_detailed()`'s single resolved reading. In practice this case cannot
+actually be reached through `convert_candidates()`: the segmenter only ever
+emits a multi-char token when it's an exact `word_dict`/`user_dict` hit, so
+every multi-char token already has a definite reading by construction.
+
+---
+
 ## Accuracy
 
 ### Verified examples
@@ -412,7 +457,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 133 Rust unit tests + 271 Python integration tests (404 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), and `user_dict` runtime overrides.
+All 145 Rust unit tests + 285 Python integration tests (430 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the `convert_candidates()` Candidates API.
 
 ---
 

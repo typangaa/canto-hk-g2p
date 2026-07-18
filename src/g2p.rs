@@ -65,6 +65,55 @@ pub fn token_to_jyutping<'a>(
     result
 }
 
+/// Convert a single token to its Jyutping candidate readings (Phase 7b-2).
+///
+/// Mirrors `token_to_jyutping`'s lookup order, but surfaces every known
+/// alternate reading (rank-ordered, most-likely first) instead of committing
+/// to a single one:
+///   1. Non-CJK → passthrough, single candidate
+///   2. user_dict exact match → single candidate (an override is a final
+///      decision, not ambiguity to report)
+///   3. word_candidates exact match → its full rank-ordered candidate list
+///   4. word_dict exact match (no known alternates) → single candidate
+///   5. Single-char token → char_candidates exact match if present
+///   6. Otherwise falls back to `token_to_jyutping`'s single resolved
+///      reading — this includes multi-char OOV tokens resolved via the
+///      per-character fallback loop, where ambiguity is not surfaced (each
+///      char's own candidates are not combined; see CHANGELOG known
+///      limitation)
+pub fn token_to_jyutping_candidates<'a>(
+    token: &str,
+    word_dict: &'a Dict,
+    char_dict: &'a Dict,
+    user_dict: &'a UserDict,
+    word_candidates: Option<&'a Dict>,
+    char_candidates: Option<&'a Dict>,
+) -> Vec<String> {
+    if !is_cjk(token) {
+        return vec![token.to_owned()];
+    }
+
+    if let Some(jp) = user_dict.get(token) {
+        return vec![jp.to_owned()];
+    }
+
+    if let Some(cands) = word_candidates.and_then(|d| d.lookup(token)) {
+        return cands.split('|').map(str::to_owned).collect();
+    }
+
+    if let Some(jp) = word_dict.lookup(token) {
+        return vec![jp.to_owned()];
+    }
+
+    if token.chars().count() == 1 {
+        if let Some(cands) = char_candidates.and_then(|d| d.lookup(token)) {
+            return cands.split('|').map(str::to_owned).collect();
+        }
+    }
+
+    vec![token_to_jyutping(token, word_dict, char_dict, user_dict)]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +225,96 @@ mod tests {
         let cd = make_dict(&[]);
         let ud = UserDict::new(HashMap::new());
         assert_eq!(token_to_jyutping("香港", &wd, &cd, &ud), "hoeng1 gong2");
+    }
+
+    // ── token_to_jyutping_candidates ────────────────────────────────────────
+
+    #[test]
+    fn test_candidates_english_passthrough() {
+        let wd = make_dict(&[]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        assert_eq!(
+            token_to_jyutping_candidates("hello", &wd, &cd, &ud, None, None),
+            vec!["hello".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_candidates_word_level_ambiguity() {
+        let wd = make_dict(&[("正經", "zing3 ging1")]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
+        assert_eq!(
+            token_to_jyutping_candidates("正經", &wd, &cd, &ud, Some(&wcands), None),
+            vec!["zing3 ging1".to_string(), "zing1 ging1".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_candidates_no_ambiguity_falls_back_to_single_word_reading() {
+        let wd = make_dict(&[("香港", "hoeng1 gong2")]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        let wcands = make_dict(&[]);
+        assert_eq!(
+            token_to_jyutping_candidates("香港", &wd, &cd, &ud, Some(&wcands), None),
+            vec!["hoeng1 gong2".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_candidates_single_char_ambiguity() {
+        let wd = make_dict(&[]);
+        let cd = make_dict(&[("行", "hong4")]);
+        let ud = UserDict::new(HashMap::new());
+        let ccands = make_dict(&[("行", "hong4|hang4|haang4")]);
+        assert_eq!(
+            token_to_jyutping_candidates("行", &wd, &cd, &ud, None, Some(&ccands)),
+            vec![
+                "hong4".to_string(),
+                "hang4".to_string(),
+                "haang4".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_candidates_user_dict_overrides_and_collapses_ambiguity() {
+        let wd = make_dict(&[("正經", "zing3 ging1")]);
+        let cd = make_dict(&[]);
+        let ud = user(&[("正經", "zing1 ging1")]);
+        let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
+        assert_eq!(
+            token_to_jyutping_candidates("正經", &wd, &cd, &ud, Some(&wcands), None),
+            vec!["zing1 ging1".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_candidates_multi_char_oov_fallback_not_combined() {
+        // Neither char is an exact word_dict/word_candidates hit, so this
+        // falls through to the per-char fallback loop — candidates are NOT
+        // combined across chars, matching token_to_jyutping's single result.
+        let wd = make_dict(&[]);
+        let cd = make_dict(&[("老", "lou5"), ("世", "sai3")]);
+        let ud = UserDict::new(HashMap::new());
+        let ccands = make_dict(&[("老", "lou5|lou2")]);
+        assert_eq!(
+            token_to_jyutping_candidates("老世", &wd, &cd, &ud, None, Some(&ccands)),
+            vec!["lou5 sai3".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_candidates_missing_sidecars_behave_like_none() {
+        let wd = make_dict(&[("香港", "hoeng1 gong2")]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        assert_eq!(
+            token_to_jyutping_candidates("香港", &wd, &cd, &ud, None, None),
+            vec!["hoeng1 gong2".to_string()]
+        );
     }
 }

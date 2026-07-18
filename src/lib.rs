@@ -66,6 +66,15 @@ impl PyPipeline {
         self.inner.convert_detailed(text)
     }
 
+    /// Convert text to a list of (token, candidate_readings, lang) triples.
+    /// candidate_readings is rank-ordered (most-likely first); it has more
+    /// than one entry only where the bundled data has 2+ known readings for
+    /// that token (or, for OOV single chars, that character). Everything
+    /// else reports a single-item list.
+    pub fn convert_candidates(&self, text: &str) -> Vec<(String, Vec<String>, String)> {
+        self.inner.convert_candidates(text)
+    }
+
     /// Create a Pipeline loading dict files from an explicit directory path.
     #[staticmethod]
     #[pyo3(signature = (dir, punc_norm=true))]

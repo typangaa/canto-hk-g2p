@@ -4,6 +4,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] — 2026-07-18
+
+### Added
+
+**Candidates API — `Pipeline.convert_candidates(text)`** (Phase 7b-2)
+- New method: `p.convert_candidates(text)` → `list[(token, candidate_readings, lang)]`,
+  the text-level sibling of `convert_detailed()`. `candidate_readings` is a
+  rank-ordered list (most-likely first); it has more than one entry only
+  where the bundled data has 2+ known readings for that exact token (or, for
+  an out-of-vocabulary single character, that character) — e.g.
+  `p.convert_candidates("正經")` → `[("正經", ["zing3 ging1", "zing1 ging1"], "yue")]`
+- Everything else — unambiguous words, English tokens, punctuation, and
+  out-of-vocabulary multi-char tokens resolved via the per-character fallback
+  loop — reports a single-item list, identical to what `convert_detailed()`
+  already produces for that token (documented known limitation: ambiguity is
+  not surfaced across a multi-char OOV fallback token's individual
+  characters — this is architecturally unreachable in practice anyway, since
+  the segmenter only ever emits a multi-char token when it's an exact
+  `word_dict`/`user_dict` hit)
+- A `user_dict` override (v1.8.0) always collapses to a single candidate — an
+  override is a final decision, not ambiguity to report
+- **No new binary format**: reuses the existing CJYP v1 `Dict` (mmap +
+  binary search) format as-is — a candidate cell's value is simply
+  `"reading1|reading2|..."`. Two new sparse sidecar files are bundled in the
+  wheel, `word_candidates.bin` (11,030 entries, 326 KiB) and
+  `char_candidates.bin` (9,661 entries, 261 KiB) — only keys with 2+ distinct
+  known readings get a row (most of ~141k word / ~32k char entries have
+  exactly one reading and need no row)
+- `scripts/build_dict.py`: `load_tojyutping()` now keeps ToJyutping's full
+  rank-ordered candidate list per trie node (previously only rank-0 survived
+  past the build step); `load_rime_cantonese()` now also returns the actual
+  competing readings for tied words (previously only *which* words were tied
+  was tracked, the losing reading's text was discarded); new
+  `build_candidates()` merges the two sources — ToJyutping's own ranking wins
+  outright when present (more trustworthy — it reflects that package's
+  context modelling), otherwise falls back to rime's tied readings with the
+  already-resolved winner moved to rank 0. `oral_hk.tsv` overrides are
+  excluded from candidates entirely (a hand-curated decision isn't ambiguity)
+- Sidecars are loaded as `Option<Dict>` and are optional at runtime — a data
+  directory without them (e.g. an older cached build) still loads fine;
+  `convert_candidates()` simply reports no known ambiguity anywhere
+- New Rust function `g2p::token_to_jyutping_candidates()` (mirrors
+  `token_to_jyutping()`'s lookup order) + `Pipeline::convert_candidates()`
+  (mirrors `convert_detailed()`)
+- 8 new Rust unit tests (`g2p.rs`) + 5 new Rust unit tests (`pipeline.rs`,
+  including a missing-sidecar graceful-fallback case) + 14 new Python tests
+  (`tests/test_candidates.py`)
+
+This completes the deferred Candidates API work split out in v1.8.0
+(Phase 7b): 7b-1 was the runtime `user_dict` override, 7b-2 is this
+text-level candidates surface.
+
+[1.9.0]: https://github.com/typangaa/canto-hk-g2p/compare/v1.8.0...v1.9.0
+
 ## [1.8.0] — 2026-07-18
 
 ### Added

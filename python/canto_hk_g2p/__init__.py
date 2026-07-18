@@ -161,6 +161,41 @@ class Pipeline:
         """
         return self._inner.convert_detailed(text)
 
+    def convert_candidates(self, text: str) -> list[tuple[str, list[str], str]]:
+        """Convert text to a list of (token, candidate_readings, lang) triples.
+
+        Surfaces every known alternate reading for a polyphone (多音字) instead
+        of committing to a single one — for downstream uses like letting a
+        human or a downstream model pick, or auditing where the bundled
+        dictionaries had to make a judgment call.
+
+        ``candidate_readings`` is rank-ordered (most-likely first). It has more
+        than one entry only where the bundled data has 2+ known readings for
+        that exact token (or, for an out-of-vocabulary single character, that
+        character). Unambiguous words, English tokens, punctuation, and
+        out-of-vocabulary multi-char tokens (resolved per-character — see
+        CHANGELOG) all report a single-item list, identical to what
+        :meth:`convert_detailed` would produce for that token.
+
+        A ``user_dict`` override always collapses to a single candidate: an
+        override is a final decision, not ambiguity to report.
+
+        Args:
+            text: Input text (Cantonese, English, or mixed).
+
+        Returns:
+            List of ``(token, candidate_readings, lang)`` tuples, one per token.
+
+        Example::
+
+            p.convert_candidates("正經")
+            # → [("正經", ["zing3 ging1", "zing1 ging1"], "yue")]
+
+            p.convert_candidates("香港")
+            # → [("香港", ["hoeng1 gong2"], "yue")]   (no known ambiguity)
+        """
+        return self._inner.convert_candidates(text)
+
     def convert_ipa(
         self,
         text: str,
