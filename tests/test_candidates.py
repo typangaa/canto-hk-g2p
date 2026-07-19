@@ -153,3 +153,94 @@ def test_batch_empty_string_element_returns_empty_sublist(p):
     result = p.convert_candidates_batch(["正經", ""])
     assert result[0] == p.convert_candidates("正經")
     assert result[1] == []
+
+
+# ── Scored (v1.11.0, issue #12) ──────────────────────────────────────────────
+
+def test_scored_word_level_tied(p):
+    # "正經" isn't an exact ToJyutping trie node, so it falls back to
+    # rime-cantonese's raw arbitrary tie-break -> "tied".
+    result = p.convert_candidates_scored("正經")
+    assert result == [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied")]
+
+
+def test_scored_char_level_ranked(p):
+    # Single chars are covered directly by ToJyutping's own trie -> "ranked".
+    result = p.convert_candidates_scored("行")
+    token, cands, lang, confidence = result[0]
+    assert token == "行"
+    assert lang == "yue"
+    assert confidence == "ranked"
+    assert cands[0] == p.convert("行")
+    assert len(cands) >= 2
+
+
+def test_scored_no_ambiguity_is_certain(p):
+    assert p.convert_candidates_scored("香港") == [
+        ("香港", ["hoeng1 gong2"], "yue", "certain")
+    ]
+
+
+def test_scored_english_and_punct_certain(p):
+    result = p.convert_candidates_scored("hi!")
+    assert result == [
+        ("hi", ["hi"], "en", "certain"),
+        ("!", ["!"], "punct", "certain"),
+    ]
+
+
+def test_scored_user_dict_override_is_certain():
+    p = Pipeline(user_dict={"正經": "zing1 ging1"})
+    assert p.convert_candidates_scored("正經") == [
+        ("正經", ["zing1 ging1"], "yue", "certain")
+    ]
+
+
+def test_scored_confidence_only_present_when_ambiguous(p):
+    # Rank-0 candidate must always match convert()'s committed reading,
+    # regardless of confidence tier.
+    for text in ["正經", "行", "香港"]:
+        scored = p.convert_candidates_scored(text)
+        assert scored[0][1][0] == p.convert(text)
+
+
+def test_scored_empty_text_returns_empty_list(p):
+    assert p.convert_candidates_scored("") == []
+
+
+def test_scored_tokens_and_candidates_match_convert_candidates(p):
+    text = "你好嘅，I love Hong Kong"
+    candidates = p.convert_candidates(text)
+    scored = p.convert_candidates_scored(text)
+    assert [tok for tok, _, _ in candidates] == [tok for tok, _, _, _ in scored]
+    assert [c for _, c, _ in candidates] == [c for _, c, _, _ in scored]
+    assert [lang for _, _, lang in candidates] == [lang for _, _, lang, _ in scored]
+    for confidence in [conf for *_, conf in scored]:
+        assert confidence in {"certain", "ranked", "tied"}
+
+
+# ── Scored batch (v1.11.0) ───────────────────────────────────────────────────
+
+def test_scored_batch_matches_per_text_calls(p):
+    texts = ["正經", "香港銀行", "hi! bye"]
+    batch_result = p.convert_candidates_scored_batch(texts)
+    per_text_result = [p.convert_candidates_scored(t) for t in texts]
+    assert batch_result == per_text_result
+
+
+def test_scored_batch_preserves_order_and_length(p):
+    texts = ["行", "重", "處理", "香港"]
+    result = p.convert_candidates_scored_batch(texts)
+    assert len(result) == len(texts)
+    for text, sublist in zip(texts, result):
+        assert sublist[0][0] == p.convert_candidates_scored(text)[0][0]
+
+
+def test_scored_batch_empty_list_returns_empty_list(p):
+    assert p.convert_candidates_scored_batch([]) == []
+
+
+def test_scored_batch_empty_string_element_returns_empty_sublist(p):
+    result = p.convert_candidates_scored_batch(["正經", ""])
+    assert result[0] == p.convert_candidates_scored("正經")
+    assert result[1] == []

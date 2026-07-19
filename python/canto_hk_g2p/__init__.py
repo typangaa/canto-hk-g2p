@@ -222,6 +222,75 @@ class Pipeline:
         """
         return self._inner.convert_candidates_batch(texts)
 
+    def convert_candidates_scored(
+        self, text: str
+    ) -> list[tuple[str, list[str], str, str]]:
+        """Convert text to a list of (token, candidate_readings, lang, confidence) tuples.
+
+        Same shape as :meth:`convert_candidates`, plus a categorical
+        confidence tag per token — useful for thresholding a human-QA review
+        queue by "genuine near-tie" vs. "strong lean" instead of treating
+        every ambiguous token the same (see `#12
+        <https://github.com/typangaa/canto-hk-g2p/issues/12>`_).
+
+        ``confidence`` is one of:
+
+        - ``"certain"``: a single known reading; no ambiguity to report.
+        - ``"ranked"``: 2+ candidates, ordered by ToJyutping's own
+          context-aware ranking — a real preference signal.
+        - ``"tied"``: 2+ candidates, but the order is rime-cantonese's raw
+          arbitrary tie-break — no real preference signal. Also the default
+          for an ambiguous token when the bundled confidence data has no
+          entry for it.
+
+        No numeric probability is exposed by design: neither ToJyutping's
+        trie nor rime-cantonese's tied readings carry real frequency data,
+        so a float score would be fabricated rather than measured. See
+        CHANGELOG for the research behind this categorical-only design.
+
+        Args:
+            text: Input text (Cantonese, English, or mixed).
+
+        Returns:
+            List of ``(token, candidate_readings, lang, confidence)`` tuples,
+            one per token.
+
+        Example::
+
+            p.convert_candidates_scored("正經")
+            # → [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "ranked")]
+
+            p.convert_candidates_scored("香港")
+            # → [("香港", ["hoeng1 gong2"], "yue", "certain")]
+        """
+        return self._inner.convert_candidates_scored(text)
+
+    def convert_candidates_scored_batch(
+        self, texts: list[str]
+    ) -> list[list[tuple[str, list[str], str, str]]]:
+        """Convert a list of strings in parallel using Rayon.
+
+        Batch sibling of :meth:`convert_candidates_scored` — same per-text
+        output shape, one list of ``(token, candidate_readings, lang,
+        confidence)`` tuples per input text.
+
+        Args:
+            texts: List of input strings.
+
+        Returns:
+            List of per-text ``convert_candidates_scored()`` results, same
+            length and order as ``texts``.
+
+        Example::
+
+            p.convert_candidates_scored_batch(["正經", "香港"])
+            # → [
+            #      [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "ranked")],
+            #      [("香港", ["hoeng1 gong2"], "yue", "certain")],
+            #    ]
+        """
+        return self._inner.convert_candidates_scored_batch(texts)
+
     def convert_ipa(
         self,
         text: str,

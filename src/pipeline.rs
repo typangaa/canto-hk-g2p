@@ -15,6 +15,12 @@ pub struct Pipeline {
     /// `convert_candidates()` just reports no known ambiguity anywhere.
     word_candidates: Option<Dict>,
     char_candidates: Option<Dict>,
+    /// Categorical confidence tag per candidates key ("ranked" | "tied"),
+    /// Phase 7b-3 (issue #12). `None` if the sidecar `.bin` is missing —
+    /// `convert_candidates_scored()` then defaults every ambiguous token to
+    /// `"tied"` (the conservative assumption: no real preference signal).
+    word_candidates_confidence: Option<Dict>,
+    char_candidates_confidence: Option<Dict>,
     pub punc_norm: bool,
 }
 
@@ -75,12 +81,18 @@ impl Pipeline {
         let char_dict = Dict::load(&dir.join("char.bin"))?;
         let word_candidates = Dict::load(&dir.join("word_candidates.bin")).ok();
         let char_candidates = Dict::load(&dir.join("char_candidates.bin")).ok();
+        let word_candidates_confidence =
+            Dict::load(&dir.join("word_candidates_confidence.bin")).ok();
+        let char_candidates_confidence =
+            Dict::load(&dir.join("char_candidates_confidence.bin")).ok();
         Ok(Pipeline {
             word_dict,
             char_dict,
             user_dict: UserDict::new(user_dict),
             word_candidates,
             char_candidates,
+            word_candidates_confidence,
+            char_candidates_confidence,
             punc_norm,
         })
     }
@@ -179,6 +191,59 @@ impl Pipeline {
             .map(|t| self.convert_candidates(t))
             .collect()
     }
+
+    /// Convert text to a list of (token, candidate_readings, lang, confidence)
+    /// tuples (Phase 7b-3, issue #12). Same token/candidate/lang semantics as
+    /// `convert_candidates()`, plus a categorical confidence tag per token:
+    /// `"certain"` (no ambiguity), `"ranked"` (ToJyutping's own context-aware
+    /// ranking), or `"tied"` (rime-cantonese arbitrary tie-break — no real
+    /// preference signal; also the default when the confidence sidecar has
+    /// no entry for an ambiguous token).
+    pub fn convert_candidates_scored(
+        &self,
+        text: &str,
+    ) -> Vec<(String, Vec<String>, String, String)> {
+        if text.is_empty() {
+            return vec![];
+        }
+        let pre = if self.punc_norm {
+            normalizer::punc_norm(text)
+        } else {
+            text.to_owned()
+        };
+        let normalized = normalizer::normalize(&pre);
+        let tokens = segment::segment_owned(&normalized, &self.word_dict, &self.user_dict);
+        tokens
+            .into_iter()
+            .map(|tok| {
+                let (candidates, confidence) = g2p::token_to_jyutping_candidates_scored(
+                    &tok,
+                    &self.word_dict,
+                    &self.char_dict,
+                    &self.user_dict,
+                    self.word_candidates.as_ref(),
+                    self.char_candidates.as_ref(),
+                    self.word_candidates_confidence.as_ref(),
+                    self.char_candidates_confidence.as_ref(),
+                );
+                let lang = classify_lang(&tok).to_owned();
+                (tok, candidates, lang, confidence)
+            })
+            .collect()
+    }
+
+    /// Rayon-parallel batch sibling of `convert_candidates_scored()` — same
+    /// per-text output shape, one `Vec` per input text.
+    #[allow(clippy::type_complexity)]
+    pub fn convert_candidates_scored_batch(
+        &self,
+        texts: &[String],
+    ) -> Vec<Vec<(String, Vec<String>, String, String)>> {
+        texts
+            .par_iter()
+            .map(|t| self.convert_candidates_scored(t))
+            .collect()
+    }
 }
 
 fn classify_lang(token: &str) -> &'static str {
@@ -245,6 +310,20 @@ mod tests {
         word_candidates: Option<&[(&str, &str)]>,
         char_candidates: Option<&[(&str, &str)]>,
     ) -> PathBuf {
+        make_data_dir_scored(word, chars, word_candidates, char_candidates, None, None)
+    }
+
+    /// Like `make_data_dir()`, but also optionally writes the confidence
+    /// sidecars (Phase 7b-3, issue #12).
+    #[allow(clippy::too_many_arguments)]
+    fn make_data_dir_scored(
+        word: &[(&str, &str)],
+        chars: &[(&str, &str)],
+        word_candidates: Option<&[(&str, &str)]>,
+        char_candidates: Option<&[(&str, &str)]>,
+        word_candidates_confidence: Option<&[(&str, &str)]>,
+        char_candidates_confidence: Option<&[(&str, &str)]>,
+    ) -> PathBuf {
         use std::time::{SystemTime, UNIX_EPOCH};
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -260,6 +339,12 @@ mod tests {
         }
         if let Some(cc) = char_candidates {
             write_bin(&dir.join("char_candidates.bin"), cc);
+        }
+        if let Some(wcc) = word_candidates_confidence {
+            write_bin(&dir.join("word_candidates_confidence.bin"), wcc);
+        }
+        if let Some(ccc) = char_candidates_confidence {
+            write_bin(&dir.join("char_candidates_confidence.bin"), ccc);
         }
         dir
     }
@@ -368,5 +453,153 @@ mod tests {
         let dir = make_data_dir(&[], &[], None, None);
         let p = Pipeline::from_dir(&dir).unwrap();
         assert_eq!(p.convert_candidates_batch(&[]), Vec::<Vec<_>>::new());
+    }
+
+    // ── convert_candidates_scored (Phase 7b-3, issue #12) ────────────────────
+
+    #[test]
+    fn test_convert_candidates_scored_ranked() {
+        let dir = make_data_dir_scored(
+            &[("正經", "zing3 ging1")],
+            &[],
+            Some(&[("正經", "zing3 ging1|zing1 ging1")]),
+            None,
+            Some(&[("正經", "ranked")]),
+            None,
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        let result = p.convert_candidates_scored("正經");
+        assert_eq!(
+            result,
+            vec![(
+                "正經".to_string(),
+                vec!["zing3 ging1".to_string(), "zing1 ging1".to_string()],
+                "yue".to_string(),
+                "ranked".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn test_convert_candidates_scored_tied() {
+        let dir = make_data_dir_scored(
+            &[("處理", "cyu2 lei5")],
+            &[],
+            Some(&[("處理", "cyu2 lei5|cyu5 lei5")]),
+            None,
+            Some(&[("處理", "tied")]),
+            None,
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        let result = p.convert_candidates_scored("處理");
+        assert_eq!(result[0].3, "tied");
+    }
+
+    #[test]
+    fn test_convert_candidates_scored_missing_confidence_sidecar_defaults_tied() {
+        let dir = make_data_dir(
+            &[("正經", "zing3 ging1")],
+            &[],
+            Some(&[("正經", "zing3 ging1|zing1 ging1")]),
+            None,
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        let result = p.convert_candidates_scored("正經");
+        assert_eq!(result[0].3, "tied");
+    }
+
+    #[test]
+    fn test_convert_candidates_scored_no_ambiguity_is_certain() {
+        let dir = make_data_dir(&[("香港", "hoeng1 gong2")], &[], None, None);
+        let p = Pipeline::from_dir(&dir).unwrap();
+        let result = p.convert_candidates_scored("香港");
+        assert_eq!(
+            result,
+            vec![(
+                "香港".to_string(),
+                vec!["hoeng1 gong2".to_string()],
+                "yue".to_string(),
+                "certain".to_string()
+            )]
+        );
+    }
+
+    #[test]
+    fn test_convert_candidates_scored_user_dict_override_is_certain() {
+        let dir = make_data_dir_scored(
+            &[("正經", "zing3 ging1")],
+            &[],
+            Some(&[("正經", "zing3 ging1|zing1 ging1")]),
+            None,
+            Some(&[("正經", "ranked")]),
+            None,
+        );
+        let p = Pipeline::from_dir_opts_with_user_dict(
+            &dir,
+            true,
+            HashMap::from([("正經".to_string(), "zing1 ging1".to_string())]),
+        )
+        .unwrap();
+        let result = p.convert_candidates_scored("正經");
+        assert_eq!(result[0].3, "certain");
+    }
+
+    #[test]
+    fn test_convert_candidates_scored_english_and_punct_certain() {
+        let dir = make_data_dir(&[], &[], None, None);
+        let p = Pipeline::from_dir(&dir).unwrap();
+        let result = p.convert_candidates_scored("hi!");
+        assert_eq!(
+            result,
+            vec![
+                (
+                    "hi".to_string(),
+                    vec!["hi".to_string()],
+                    "en".to_string(),
+                    "certain".to_string()
+                ),
+                (
+                    "!".to_string(),
+                    vec!["!".to_string()],
+                    "punct".to_string(),
+                    "certain".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_convert_candidates_scored_empty_text() {
+        let dir = make_data_dir(&[], &[], None, None);
+        let p = Pipeline::from_dir(&dir).unwrap();
+        assert_eq!(p.convert_candidates_scored(""), vec![]);
+    }
+
+    #[test]
+    fn test_convert_candidates_scored_batch_matches_per_text_calls() {
+        let dir = make_data_dir_scored(
+            &[("正經", "zing3 ging1"), ("香港", "hoeng1 gong2")],
+            &[],
+            Some(&[("正經", "zing3 ging1|zing1 ging1")]),
+            None,
+            Some(&[("正經", "ranked")]),
+            None,
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        let texts = vec!["正經".to_string(), "香港".to_string(), "hi!".to_string()];
+        let batch_result = p.convert_candidates_scored_batch(&texts);
+        let per_text_result: Vec<_> = texts
+            .iter()
+            .map(|t| p.convert_candidates_scored(t))
+            .collect();
+        assert_eq!(batch_result, per_text_result);
+        assert_eq!(batch_result.len(), 3);
+    }
+
+    #[test]
+    fn test_convert_candidates_scored_batch_empty_input() {
+        let dir = make_data_dir(&[], &[], None, None);
+        let p = Pipeline::from_dir(&dir).unwrap();
+        assert_eq!(p.convert_candidates_scored_batch(&[]), Vec::<Vec<_>>::new());
     }
 }

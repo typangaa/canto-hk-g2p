@@ -47,6 +47,7 @@ The library is a standalone open-source deliverable — Cantonese TTS pre-proces
 - **Polyphone disambiguation** via longest-match word-level segmentation (~85% accuracy)
 - **`user_dict` runtime overrides** — `Pipeline(user_dict={"行": "hong4"})` locks a pronunciation above every bundled dictionary, and participates in segmentation so multi-char overrides aren't split apart
 - **`convert_candidates()`** / **`convert_candidates_batch()`** — Candidates API: rank-ordered alternate readings for polyphones (`正經` → `["zing3 ging1", "zing1 ging1"]`), instead of committing to a single one
+- **`convert_candidates_scored()`** / **`convert_candidates_scored_batch()`** — same, plus a categorical confidence tag (`"certain"` / `"ranked"` / `"tied"`) per ambiguous token
 - **Rayon parallel batch processing** — scales to large corpora
 - **Zero runtime Python dependencies** — pronunciation dictionaries bundled in the wheel
 - **`convert_detailed()`** — structured `(token, jyutping, lang)` output with language tags (`yue` / `en` / `punct`)
@@ -357,6 +358,47 @@ p.convert_candidates_batch(["正經", "香港銀行"])
 #    ]
 ```
 
+### `convert_candidates_scored(text: str) -> list[tuple[str, list[str], str, str]]`
+
+Same shape as `convert_candidates()`, plus a categorical `confidence` tag per
+token — useful for thresholding a human-QA review queue by "genuine near-tie"
+vs. "strong lean" instead of treating every ambiguous token the same.
+
+| `confidence` | Meaning |
+|---|---|
+| `"certain"` | Single known reading — no ambiguity to report |
+| `"ranked"` | 2+ candidates, ordered by ToJyutping's own context-aware ranking — a real preference signal |
+| `"tied"` | 2+ candidates, but the order is rime-cantonese's raw arbitrary tie-break — no real preference signal. Also the default when an ambiguous token has no entry in the bundled confidence data |
+
+```python
+p.convert_candidates_scored("正經")
+# → [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied")]
+
+p.convert_candidates_scored("行")
+# → [("行", ["haang4", "hang4", "hong4", ...], "yue", "ranked")]
+
+p.convert_candidates_scored("香港")
+# → [("香港", ["hoeng1 gong2"], "yue", "certain")]
+```
+
+**No numeric probability is exposed, by design.** Neither ToJyutping's trie
+nor rime-cantonese's tied readings carry real frequency data — a float score
+per candidate would be fabricated, not measured. See CHANGELOG (v1.11.0) for
+the research behind this categorical-only design.
+
+### `convert_candidates_scored_batch(texts: list[str]) -> list[list[tuple[str, list[str], str, str]]]`
+
+Rayon-parallel batch sibling of `convert_candidates_scored()` — same
+per-text output shape, one list per input text:
+
+```python
+p.convert_candidates_scored_batch(["正經", "香港"])
+# → [
+#      [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied")],
+#      [("香港", ["hoeng1 gong2"], "yue", "certain")],
+#    ]
+```
+
 ---
 
 ## Accuracy
@@ -470,7 +512,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 147 Rust unit tests + 289 Python integration tests (436 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the `convert_candidates()` / `convert_candidates_batch()` Candidates API.
+All 163 Rust unit tests + 301 Python integration tests (464 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the Candidates API (`convert_candidates()` / `convert_candidates_batch()` / `convert_candidates_scored()` / `convert_candidates_scored_batch()`).
 
 ---
 

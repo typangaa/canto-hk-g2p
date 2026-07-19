@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "canto-hk-g2p"
-version = "1.10.0"
+version = "1.11.0"
 description = "Fast Cantonese text-to-phoneme (G2P) converter — Jyutping with tone numbers"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -58,5 +58,7 @@ include = [
     "python/canto_hk_g2p/data/char.bin",
     "python/canto_hk_g2p/data/word_candidates.bin",
     "python/canto_hk_g2p/data/char_candidates.bin",
+    "python/canto_hk_g2p/data/word_candidates_confidence.bin",
+    "python/canto_hk_g2p/data/char_candidates_confidence.bin",
     "python/canto_hk_g2p/data/cmudict.dict",
 ]

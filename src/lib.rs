@@ -89,6 +89,34 @@ impl PyPipeline {
         Ok(self.inner.convert_candidates_batch(&inputs))
     }
 
+    /// Convert text to a list of (token, candidate_readings, lang, confidence)
+    /// tuples. confidence is "certain" (no ambiguity), "ranked" (ToJyutping's
+    /// own context-aware ranking), or "tied" (rime-cantonese arbitrary
+    /// tie-break — no real preference signal; also the default when the
+    /// confidence sidecar has no entry for an ambiguous token). No numeric
+    /// probability is exposed — no bundled source computes one honestly.
+    #[allow(clippy::type_complexity)]
+    pub fn convert_candidates_scored(
+        &self,
+        text: &str,
+    ) -> Vec<(String, Vec<String>, String, String)> {
+        self.inner.convert_candidates_scored(text)
+    }
+
+    /// Convert a list of strings in parallel (Rayon); same per-text shape as
+    /// `convert_candidates_scored()`.
+    #[allow(clippy::type_complexity)]
+    pub fn convert_candidates_scored_batch(
+        &self,
+        texts: &Bound<'_, PyList>,
+    ) -> PyResult<Vec<Vec<(String, Vec<String>, String, String)>>> {
+        let inputs: Vec<String> = texts
+            .iter()
+            .map(|item| item.extract::<String>())
+            .collect::<PyResult<_>>()?;
+        Ok(self.inner.convert_candidates_scored_batch(&inputs))
+    }
+
     /// Create a Pipeline loading dict files from an explicit directory path.
     #[staticmethod]
     #[pyo3(signature = (dir, punc_norm=true))]

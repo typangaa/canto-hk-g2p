@@ -4,6 +4,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] — 2026-07-19
+
+### Added
+
+**`Pipeline.convert_candidates_scored()` / `convert_candidates_scored_batch()`**
+— categorical confidence tag per ambiguous token, closing
+[#12](https://github.com/typangaa/canto-hk-g2p/issues/12):
+`canto-hk-speech-pipeline` wanted to distinguish a genuine near-tie polyphone
+from a strong lean when thresholding a human-QA review queue, since
+`convert_candidates()` alone can only signal "2+ known readings," treating
+every ambiguity the same regardless of how confident the underlying data
+actually is.
+
+```python
+p.convert_candidates_scored("正經")
+# → [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied")]
+
+p.convert_candidates_scored("行")
+# → [("行", ["haang4", "hang4", ...], "yue", "ranked")]
+
+p.convert_candidates_scored("香港")
+# → [("香港", ["hoeng1 gong2"], "yue", "certain")]
+```
+
+`confidence` is one of `"certain"` (no ambiguity), `"ranked"` (2+ candidates
+ordered by ToJyutping's own context-aware ranking — a real preference
+signal), or `"tied"` (2+ candidates, but the order is rime-cantonese's raw
+arbitrary tie-break — no real preference signal; also the default for an
+ambiguous token when the bundled confidence data has no entry for it).
+
+**No numeric probability is exposed, by design.** The issue's original
+proposal was a float score per candidate (e.g. `0.82`/`0.18`). Before
+implementing, we researched how comparable tools represent this:
+
+- **g2pW** (SOTA neural Mandarin polyphone disambiguator) computes softmax
+  probabilities internally, but its own public reference API
+  (`GitYCC/g2pW`) exposes only a single committed phoneme per character —
+  no ranked list, no probability.
+- **pypinyin** (`heteronym=True`) and **ToJyutping** — the same class of
+  rule/dictionary tool this library is built on — return a rank-ordered
+  list with no numeric score at all.
+- **WenetSpeech-Yue**, a large Cantonese speech corpus with a real
+  `jyutping_confidence` field, derives it from ROVER voting agreement
+  across 3 independent ASR systems transcribing real audio — an empirical
+  signal we have no equivalent of (no audio, no ASR ensemble; our ordering
+  comes from either ToJyutping's static ranking or rime's arbitrary
+  tie-break).
+
+No comparable text-only, rule/dictionary-based G2P tool exposes a numeric
+confidence, and the one real-world example that does derives it from a
+fundamentally different (audio-grounded) process. A fabricated float would
+overclaim precision the underlying data doesn't have — the categorical tag
+is the honest representation.
+
+Data layer: `scripts/build_dict.py`'s `build_candidates()` now also returns
+a confidence dict (`"ranked"` for entries sourced from ToJyutping's own
+candidate ranking, `"tied"` for rime-cantonese's raw tie-break fallback),
+written to two new sparse sidecars — `word_candidates_confidence.bin` /
+`char_candidates_confidence.bin` — with 1:1 key coverage against
+`word_candidates.bin` / `char_candidates.bin`. New Rust function
+`g2p::token_to_jyutping_candidates_scored()` (mirrors
+`token_to_jyutping_candidates()`'s lookup order) + `Pipeline` methods +
+pyo3 bindings (`src/lib.rs`). 16 new Rust unit tests + 12 new Python tests
+(`tests/test_candidates.py`).
+
+[1.11.0]: https://github.com/typangaa/canto-hk-g2p/compare/v1.10.0...v1.11.0
+
 ## [1.10.0] — 2026-07-19
 
 ### Added

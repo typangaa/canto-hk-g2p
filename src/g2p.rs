@@ -114,6 +114,70 @@ pub fn token_to_jyutping_candidates<'a>(
     vec![token_to_jyutping(token, word_dict, char_dict, user_dict)]
 }
 
+/// Convert a single token to its Jyutping candidate readings plus a
+/// categorical confidence tag (Phase 7b-3, issue #12).
+///
+/// Mirrors `token_to_jyutping_candidates`'s lookup order and candidate list,
+/// but also reports where that ordering came from:
+///   - `"certain"`: a single known reading; no ambiguity to report.
+///   - `"ranked"`: 2+ candidates, ordered by ToJyutping's own context-aware
+///     ranking (a real preference signal).
+///   - `"tied"`: 2+ candidates, but the order is rime-cantonese's raw
+///     arbitrary tie-break (no real preference signal). Also the default
+///     when a confidence sidecar is missing or has no entry for an
+///     ambiguous token (older/custom data dirs), since that's the
+///     conservative assumption.
+///
+/// No numeric probability is exposed here by design — neither ToJyutping's
+/// trie nor rime-cantonese's tied readings carry real frequency data, so a
+/// float score would be fabricated (see CHANGELOG).
+#[allow(clippy::too_many_arguments)]
+pub fn token_to_jyutping_candidates_scored<'a>(
+    token: &str,
+    word_dict: &'a Dict,
+    char_dict: &'a Dict,
+    user_dict: &'a UserDict,
+    word_candidates: Option<&'a Dict>,
+    char_candidates: Option<&'a Dict>,
+    word_candidates_confidence: Option<&'a Dict>,
+    char_candidates_confidence: Option<&'a Dict>,
+) -> (Vec<String>, String) {
+    if !is_cjk(token) {
+        return (vec![token.to_owned()], "certain".to_owned());
+    }
+
+    if let Some(jp) = user_dict.get(token) {
+        return (vec![jp.to_owned()], "certain".to_owned());
+    }
+
+    if let Some(cands) = word_candidates.and_then(|d| d.lookup(token)) {
+        let confidence = word_candidates_confidence
+            .and_then(|d| d.lookup(token))
+            .unwrap_or("tied")
+            .to_owned();
+        return (cands.split('|').map(str::to_owned).collect(), confidence);
+    }
+
+    if let Some(jp) = word_dict.lookup(token) {
+        return (vec![jp.to_owned()], "certain".to_owned());
+    }
+
+    if token.chars().count() == 1 {
+        if let Some(cands) = char_candidates.and_then(|d| d.lookup(token)) {
+            let confidence = char_candidates_confidence
+                .and_then(|d| d.lookup(token))
+                .unwrap_or("tied")
+                .to_owned();
+            return (cands.split('|').map(str::to_owned).collect(), confidence);
+        }
+    }
+
+    (
+        vec![token_to_jyutping(token, word_dict, char_dict, user_dict)],
+        "certain".to_owned(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,6 +379,157 @@ mod tests {
         assert_eq!(
             token_to_jyutping_candidates("香港", &wd, &cd, &ud, None, None),
             vec!["hoeng1 gong2".to_string()]
+        );
+    }
+
+    // ── token_to_jyutping_candidates_scored ──────────────────────────────────
+
+    #[test]
+    fn test_scored_no_ambiguity_is_certain() {
+        let wd = make_dict(&[("香港", "hoeng1 gong2")]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        assert_eq!(
+            token_to_jyutping_candidates_scored("香港", &wd, &cd, &ud, None, None, None, None),
+            (vec!["hoeng1 gong2".to_string()], "certain".to_string())
+        );
+    }
+
+    #[test]
+    fn test_scored_word_level_ranked() {
+        let wd = make_dict(&[("正經", "zing3 ging1")]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
+        let wconf = make_dict(&[("正經", "ranked")]);
+        assert_eq!(
+            token_to_jyutping_candidates_scored(
+                "正經",
+                &wd,
+                &cd,
+                &ud,
+                Some(&wcands),
+                None,
+                Some(&wconf),
+                None
+            ),
+            (
+                vec!["zing3 ging1".to_string(), "zing1 ging1".to_string()],
+                "ranked".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_scored_word_level_tied() {
+        let wd = make_dict(&[("處理", "cyu2 lei5")]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        let wcands = make_dict(&[("處理", "cyu2 lei5|cyu5 lei5")]);
+        let wconf = make_dict(&[("處理", "tied")]);
+        assert_eq!(
+            token_to_jyutping_candidates_scored(
+                "處理",
+                &wd,
+                &cd,
+                &ud,
+                Some(&wcands),
+                None,
+                Some(&wconf),
+                None
+            ),
+            (
+                vec!["cyu2 lei5".to_string(), "cyu5 lei5".to_string()],
+                "tied".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_scored_ambiguous_missing_confidence_sidecar_defaults_tied() {
+        // word_candidates has a row but the confidence sidecar is absent
+        // entirely (older/custom data dir) — must default to "tied", not panic.
+        let wd = make_dict(&[("正經", "zing3 ging1")]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
+        assert_eq!(
+            token_to_jyutping_candidates_scored(
+                "正經",
+                &wd,
+                &cd,
+                &ud,
+                Some(&wcands),
+                None,
+                None,
+                None
+            ),
+            (
+                vec!["zing3 ging1".to_string(), "zing1 ging1".to_string()],
+                "tied".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_scored_single_char_ambiguity() {
+        let wd = make_dict(&[]);
+        let cd = make_dict(&[("行", "hong4")]);
+        let ud = UserDict::new(HashMap::new());
+        let ccands = make_dict(&[("行", "hong4|hang4|haang4")]);
+        let cconf = make_dict(&[("行", "ranked")]);
+        assert_eq!(
+            token_to_jyutping_candidates_scored(
+                "行",
+                &wd,
+                &cd,
+                &ud,
+                None,
+                Some(&ccands),
+                None,
+                Some(&cconf)
+            ),
+            (
+                vec![
+                    "hong4".to_string(),
+                    "hang4".to_string(),
+                    "haang4".to_string()
+                ],
+                "ranked".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn test_scored_user_dict_override_is_certain() {
+        let wd = make_dict(&[("正經", "zing3 ging1")]);
+        let cd = make_dict(&[]);
+        let ud = user(&[("正經", "zing1 ging1")]);
+        let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
+        let wconf = make_dict(&[("正經", "ranked")]);
+        assert_eq!(
+            token_to_jyutping_candidates_scored(
+                "正經",
+                &wd,
+                &cd,
+                &ud,
+                Some(&wcands),
+                None,
+                Some(&wconf),
+                None
+            ),
+            (vec!["zing1 ging1".to_string()], "certain".to_string())
+        );
+    }
+
+    #[test]
+    fn test_scored_english_passthrough_is_certain() {
+        let wd = make_dict(&[]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        assert_eq!(
+            token_to_jyutping_candidates_scored("hello", &wd, &cd, &ud, None, None, None, None),
+            (vec!["hello".to_string()], "certain".to_string())
         );
     }
 }

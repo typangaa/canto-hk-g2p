@@ -49,6 +49,8 @@ OUT_WORD_BIN = PKG_DATA_DIR / "word.bin"
 OUT_CHAR_BIN = PKG_DATA_DIR / "char.bin"
 OUT_WORD_CANDIDATES_BIN = PKG_DATA_DIR / "word_candidates.bin"
 OUT_CHAR_CANDIDATES_BIN = PKG_DATA_DIR / "char_candidates.bin"
+OUT_WORD_CANDIDATES_CONFIDENCE_BIN = PKG_DATA_DIR / "word_candidates_confidence.bin"
+OUT_CHAR_CANDIDATES_CONFIDENCE_BIN = PKG_DATA_DIR / "char_candidates_confidence.bin"
 CMUDICT_SRC = RAW_DIR / "cmudict" / "cmudict.dict"
 CMUDICT_DST = PKG_DATA_DIR / "cmudict.dict"
 
@@ -396,7 +398,7 @@ def build_candidates(
     word_entries: Dict[str, str],
     rime_readings: Dict[str, List[str]],
     tojyutping_candidates: Dict[str, List[str]],
-) -> Dict[str, str]:
+) -> Tuple[Dict[str, str], Dict[str, str]]:
     """
     Merge candidate-reading sources into the sparse Candidates API sidecar
     (Phase 7b-2). Only keys with 2+ distinct known readings are included —
@@ -410,12 +412,24 @@ def build_candidates(
       winning reading already chosen for word_entries (by resolve_tied_readings
       or plain first-occurrence) moved to the front.
 
-    Returns dict[key -> "reading1|reading2|..."] ready for write_bin().
+    Returns:
+        candidates : dict[key -> "reading1|reading2|..."] ready for write_bin().
+        confidence : dict[key -> "ranked" | "tied"] (Phase 7b-3, issue #12) —
+            "ranked" when ToJyutping's own context-aware ranking produced the
+            order (a real preference signal); "tied" when the order instead
+            came from rime-cantonese's raw arbitrary tie-break (no real
+            signal — see resolve_tied_readings). Neither is a numeric
+            probability: no bundled source computes one (ToJyutping's trie
+            stores an ordered list, not weights; rime ties are arbitrary
+            first-occurrence order) — see CHANGELOG for the research behind
+            this categorical-only design.
     """
     result: Dict[str, List[str]] = {}
+    confidence: Dict[str, str] = {}
 
     for word, candidates in tojyutping_candidates.items():
         result[word] = candidates
+        confidence[word] = "ranked"
 
     for word, readings in rime_readings.items():
         if word in result:
@@ -428,8 +442,10 @@ def build_candidates(
             distinct.insert(0, winner)
         if len(distinct) > 1:
             result[word] = distinct
+            confidence[word] = "tied"
 
-    return {word: "|".join(candidates) for word, candidates in result.items()}
+    candidates_out = {word: "|".join(c) for word, c in result.items()}
+    return candidates_out, confidence
 
 
 # ---------------------------------------------------------------------------
@@ -570,15 +586,21 @@ def main() -> None:
     #   entirely: a hand-curated override is a final decision, not ambiguity
     #   to surface.
     # ------------------------------------------------------------------
-    word_candidates = build_candidates(word_entries, rime_readings, tojyutping_candidates)
+    word_candidates, word_candidates_confidence = build_candidates(
+        word_entries, rime_readings, tojyutping_candidates
+    )
     for word in oral_dict:
         word_candidates.pop(word, None)
+        word_candidates_confidence.pop(word, None)
 
     rime_char_readings = {w: r for w, r in rime_readings.items() if len(w) == 1}
-    char_candidates = build_candidates(char_entries, rime_char_readings, tojyutping_char_candidates)
+    char_candidates, char_candidates_confidence = build_candidates(
+        char_entries, rime_char_readings, tojyutping_char_candidates
+    )
     for word in oral_dict:
         if len(word) == 1:
             char_candidates.pop(word, None)
+            char_candidates_confidence.pop(word, None)
 
     # ------------------------------------------------------------------
     # Step 6: Write binary files
@@ -592,6 +614,10 @@ def main() -> None:
     word_candidates_bytes = write_bin(word_candidates, OUT_WORD_CANDIDATES_BIN)
     print(f"[build]     Writing {OUT_CHAR_CANDIDATES_BIN} ...")
     char_candidates_bytes = write_bin(char_candidates, OUT_CHAR_CANDIDATES_BIN)
+    print(f"[build]     Writing {OUT_WORD_CANDIDATES_CONFIDENCE_BIN} ...")
+    word_confidence_bytes = write_bin(word_candidates_confidence, OUT_WORD_CANDIDATES_CONFIDENCE_BIN)
+    print(f"[build]     Writing {OUT_CHAR_CANDIDATES_CONFIDENCE_BIN} ...")
+    char_confidence_bytes = write_bin(char_candidates_confidence, OUT_CHAR_CANDIDATES_CONFIDENCE_BIN)
 
     # ------------------------------------------------------------------
     # Validate output files
@@ -601,6 +627,8 @@ def main() -> None:
     validate_bin(OUT_CHAR_BIN, len(char_entries))
     validate_bin(OUT_WORD_CANDIDATES_BIN, len(word_candidates))
     validate_bin(OUT_CHAR_CANDIDATES_BIN, len(char_candidates))
+    validate_bin(OUT_WORD_CANDIDATES_CONFIDENCE_BIN, len(word_candidates_confidence))
+    validate_bin(OUT_CHAR_CANDIDATES_CONFIDENCE_BIN, len(char_candidates_confidence))
 
     # ------------------------------------------------------------------
     # Final stats
@@ -613,7 +641,9 @@ def main() -> None:
     print(f"  char.bin            : {len(char_entries):>8,} entries   {char_bytes:>10,} bytes  ({char_bytes / 1024:.1f} KiB)")
     print(f"  word_candidates.bin : {len(word_candidates):>8,} entries   {word_candidates_bytes:>10,} bytes  ({word_candidates_bytes / 1024:.1f} KiB)")
     print(f"  char_candidates.bin : {len(char_candidates):>8,} entries   {char_candidates_bytes:>10,} bytes  ({char_candidates_bytes / 1024:.1f} KiB)")
-    total = word_bytes + char_bytes + word_candidates_bytes + char_candidates_bytes
+    print(f"  word_candidates_confidence.bin : {len(word_candidates_confidence):>8,} entries   {word_confidence_bytes:>10,} bytes  ({word_confidence_bytes / 1024:.1f} KiB)")
+    print(f"  char_candidates_confidence.bin : {len(char_candidates_confidence):>8,} entries   {char_confidence_bytes:>10,} bytes  ({char_confidence_bytes / 1024:.1f} KiB)")
+    total = word_bytes + char_bytes + word_candidates_bytes + char_candidates_bytes + word_confidence_bytes + char_confidence_bytes
     print(f"  total               :                     {total:>10,} bytes  ({total / 1024:.1f} KiB)")
     print()
     print(f"  oral_hk entries          : {len(oral_dict):,}")
@@ -626,6 +656,10 @@ def main() -> None:
     print(f"  unihan kCantonese        : {len(unihan_dict):,}")
     print(f"  word candidates (2+)     : {len(word_candidates):,}")
     print(f"  char candidates (2+)     : {len(char_candidates):,}")
+    word_ranked = sum(1 for v in word_candidates_confidence.values() if v == "ranked")
+    char_ranked = sum(1 for v in char_candidates_confidence.values() if v == "ranked")
+    print(f"  word candidates ranked/tied : {word_ranked:,} / {len(word_candidates_confidence) - word_ranked:,}")
+    print(f"  char candidates ranked/tied : {char_ranked:,} / {len(char_candidates_confidence) - char_ranked:,}")
     print("=" * 60)
 
     # Copy cmudict.dict into package data for bundling

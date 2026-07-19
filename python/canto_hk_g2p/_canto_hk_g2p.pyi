@@ -14,3 +14,9 @@ class PyPipeline:
     def convert_candidates_batch(
         self, texts: list[str]
     ) -> list[list[tuple[str, list[str], str]]]: ...
+    def convert_candidates_scored(
+        self, text: str
+    ) -> list[tuple[str, list[str], str, str]]: ...
+    def convert_candidates_scored_batch(
+        self, texts: list[str]
+    ) -> list[list[tuple[str, list[str], str, str]]]: ...
