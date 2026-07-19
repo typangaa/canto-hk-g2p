@@ -196,6 +196,32 @@ class Pipeline:
         """
         return self._inner.convert_candidates(text)
 
+    def convert_candidates_batch(
+        self, texts: list[str]
+    ) -> list[list[tuple[str, list[str], str]]]:
+        """Convert a list of strings in parallel using Rayon.
+
+        Batch sibling of :meth:`convert_candidates` — same per-text output
+        shape, one list of ``(token, candidate_readings, lang)`` tuples per
+        input text.
+
+        Args:
+            texts: List of input strings.
+
+        Returns:
+            List of per-text ``convert_candidates()`` results, same length
+            and order as ``texts``.
+
+        Example::
+
+            p.convert_candidates_batch(["正經", "香港"])
+            # → [
+            #      [("正經", ["zing3 ging1", "zing1 ging1"], "yue")],
+            #      [("香港", ["hoeng1 gong2"], "yue")],
+            #    ]
+        """
+        return self._inner.convert_candidates_batch(texts)
+
     def convert_ipa(
         self,
         text: str,

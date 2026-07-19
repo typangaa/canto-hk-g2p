@@ -124,3 +124,32 @@ def test_tokens_and_langs_match_convert_detailed(p):
     # The committed reading must always be the rank-0 candidate.
     for (_, jp, _), (_, cands, _) in zip(detailed, candidates):
         assert cands[0] == jp
+
+
+# ── Batch (v1.10.0) ──────────────────────────────────────────────────────────
+
+def test_batch_matches_per_text_calls(p):
+    texts = ["正經", "香港銀行", "hi! bye"]
+    batch_result = p.convert_candidates_batch(texts)
+    per_text_result = [p.convert_candidates(t) for t in texts]
+    assert batch_result == per_text_result
+
+
+def test_batch_preserves_order_and_length(p):
+    texts = ["行", "重", "處理", "香港"]
+    result = p.convert_candidates_batch(texts)
+    assert len(result) == len(texts)
+    # each sublist's first token must be the first token of that same text
+    # in isolation — confirms batch didn't shuffle/cross-mix inputs.
+    for text, sublist in zip(texts, result):
+        assert sublist[0][0] == p.convert_candidates(text)[0][0]
+
+
+def test_batch_empty_list_returns_empty_list(p):
+    assert p.convert_candidates_batch([]) == []
+
+
+def test_batch_empty_string_element_returns_empty_sublist(p):
+    result = p.convert_candidates_batch(["正經", ""])
+    assert result[0] == p.convert_candidates("正經")
+    assert result[1] == []

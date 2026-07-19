@@ -46,7 +46,7 @@ The library is a standalone open-source deliverable — Cantonese TTS pre-proces
   - Phone numbers: digit-by-digit expansion
 - **Polyphone disambiguation** via longest-match word-level segmentation (~85% accuracy)
 - **`user_dict` runtime overrides** — `Pipeline(user_dict={"行": "hong4"})` locks a pronunciation above every bundled dictionary, and participates in segmentation so multi-char overrides aren't split apart
-- **`convert_candidates()`** — Candidates API: rank-ordered alternate readings for polyphones (`正經` → `["zing3 ging1", "zing1 ging1"]`), instead of committing to a single one
+- **`convert_candidates()`** / **`convert_candidates_batch()`** — Candidates API: rank-ordered alternate readings for polyphones (`正經` → `["zing3 ging1", "zing1 ging1"]`), instead of committing to a single one
 - **Rayon parallel batch processing** — scales to large corpora
 - **Zero runtime Python dependencies** — pronunciation dictionaries bundled in the wheel
 - **`convert_detailed()`** — structured `(token, jyutping, lang)` output with language tags (`yue` / `en` / `punct`)
@@ -344,6 +344,19 @@ actually be reached through `convert_candidates()`: the segmenter only ever
 emits a multi-char token when it's an exact `word_dict`/`user_dict` hit, so
 every multi-char token already has a definite reading by construction.
 
+### `convert_candidates_batch(texts: list[str]) -> list[list[tuple[str, list[str], str]]]`
+
+Rayon-parallel batch sibling of `convert_candidates()` — same per-text output
+shape, one list per input text:
+
+```python
+p.convert_candidates_batch(["正經", "香港銀行"])
+# → [
+#      [("正經", ["zing3 ging1", "zing1 ging1"], "yue")],
+#      [("香港", ["hoeng1 gong2"], "yue"), ("銀行", ["ngan4 hong4"], "yue")],
+#    ]
+```
+
 ---
 
 ## Accuracy
@@ -457,7 +470,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 145 Rust unit tests + 285 Python integration tests (430 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the `convert_candidates()` Candidates API.
+All 147 Rust unit tests + 289 Python integration tests (436 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the `convert_candidates()` / `convert_candidates_batch()` Candidates API.
 
 ---
 

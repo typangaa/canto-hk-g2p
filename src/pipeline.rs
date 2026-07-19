@@ -167,6 +167,18 @@ impl Pipeline {
             })
             .collect()
     }
+
+    /// Rayon-parallel batch sibling of `convert_candidates()` — same
+    /// per-text output shape, one `Vec` per input text.
+    pub fn convert_candidates_batch(
+        &self,
+        texts: &[String],
+    ) -> Vec<Vec<(String, Vec<String>, String)>> {
+        texts
+            .par_iter()
+            .map(|t| self.convert_candidates(t))
+            .collect()
+    }
 }
 
 fn classify_lang(token: &str) -> &'static str {
@@ -333,5 +345,28 @@ mod tests {
         let dir = make_data_dir(&[], &[], None, None);
         let p = Pipeline::from_dir(&dir).unwrap();
         assert_eq!(p.convert_candidates(""), vec![]);
+    }
+
+    #[test]
+    fn test_convert_candidates_batch_matches_per_text_calls() {
+        let dir = make_data_dir(
+            &[("正經", "zing3 ging1"), ("香港", "hoeng1 gong2")],
+            &[],
+            Some(&[("正經", "zing3 ging1|zing1 ging1")]),
+            None,
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        let texts = vec!["正經".to_string(), "香港".to_string(), "hi!".to_string()];
+        let batch_result = p.convert_candidates_batch(&texts);
+        let per_text_result: Vec<_> = texts.iter().map(|t| p.convert_candidates(t)).collect();
+        assert_eq!(batch_result, per_text_result);
+        assert_eq!(batch_result.len(), 3);
+    }
+
+    #[test]
+    fn test_convert_candidates_batch_empty_input() {
+        let dir = make_data_dir(&[], &[], None, None);
+        let p = Pipeline::from_dir(&dir).unwrap();
+        assert_eq!(p.convert_candidates_batch(&[]), Vec::<Vec<_>>::new());
     }
 }

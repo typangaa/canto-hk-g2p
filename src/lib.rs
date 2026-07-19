@@ -75,6 +75,20 @@ impl PyPipeline {
         self.inner.convert_candidates(text)
     }
 
+    /// Convert a list of strings in parallel (Rayon); same per-text shape as
+    /// `convert_candidates()`.
+    #[allow(clippy::type_complexity)]
+    pub fn convert_candidates_batch(
+        &self,
+        texts: &Bound<'_, PyList>,
+    ) -> PyResult<Vec<Vec<(String, Vec<String>, String)>>> {
+        let inputs: Vec<String> = texts
+            .iter()
+            .map(|item| item.extract::<String>())
+            .collect::<PyResult<_>>()?;
+        Ok(self.inner.convert_candidates_batch(&inputs))
+    }
+
     /// Create a Pipeline loading dict files from an explicit directory path.
     #[staticmethod]
     #[pyo3(signature = (dir, punc_norm=true))]

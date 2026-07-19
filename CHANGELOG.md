@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] — 2026-07-19
+
+### Added
+
+**`Pipeline.convert_candidates_batch(texts)`** — Rayon-parallel batch sibling of
+`convert_candidates()` (v1.9.0), closing the throughput gap with the rest of
+the batch-capable API (`convert_batch()`, and `convert_detailed()` via a plain
+loop). Same per-text output shape as `convert_candidates()`, one
+`list[(token, candidate_readings, lang)]` per input text:
+
+```python
+p.convert_candidates_batch(["正經", "香港銀行"])
+# → [
+#      [("正經", ["zing3 ging1", "zing1 ging1"], "yue")],
+#      [("香港", ["hoeng1 gong2"], "yue"), ("銀行", ["ngan4 hong4"], "yue")],
+#    ]
+```
+
+Motivated by [#11](https://github.com/typangaa/canto-hk-g2p/issues/11):
+`canto-hk-speech-pipeline` uses `convert_candidates()` to flag ambiguous
+polyphone segments for priority human QA review over a multi-hundred-
+thousand-row corpus — a Python-level loop over `convert_candidates()`
+forfeited the parallelism `convert_batch()` already provides for the plain
+conversion path.
+
+New Rust method `Pipeline::convert_candidates_batch()` (`src/pipeline.rs`,
+`texts.par_iter().map(...).collect()`, identical pattern to `convert_batch()`)
++ pyo3 binding (`src/lib.rs`). 2 new Rust unit tests + 4 new Python tests
+(`tests/test_candidates.py`).
+
+[1.10.0]: https://github.com/typangaa/canto-hk-g2p/compare/v1.9.0...v1.10.0
+
 ## [1.9.0] — 2026-07-18
 
 ### Added
