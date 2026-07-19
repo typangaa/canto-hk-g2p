@@ -60,18 +60,48 @@ impl PyPipeline {
         Ok(self.inner.convert_batch(&inputs))
     }
 
-    /// Convert text to a list of (token, jyutping, lang) triples.
-    /// lang is "yue" (Cantonese CJK), "en" (Latin/English), or "punct" (punctuation/symbol).
-    pub fn convert_detailed(&self, text: &str) -> Vec<(String, String, String)> {
+    /// Convert text to a list of (token, jyutping, lang, confidence, source)
+    /// tuples. lang is "yue" (Cantonese CJK), "en" (Latin/English), or
+    /// "punct" (punctuation/symbol). jyutping is always the rank-0
+    /// (most-likely) reading. confidence/source are described on
+    /// convert_candidates().
+    #[allow(clippy::type_complexity)]
+    pub fn convert_detailed(&self, text: &str) -> Vec<(String, String, String, String, String)> {
         self.inner.convert_detailed(text)
     }
 
-    /// Convert text to a list of (token, candidate_readings, lang) triples.
-    /// candidate_readings is rank-ordered (most-likely first); it has more
-    /// than one entry only where the bundled data has 2+ known readings for
-    /// that token (or, for OOV single chars, that character). Everything
-    /// else reports a single-item list.
-    pub fn convert_candidates(&self, text: &str) -> Vec<(String, Vec<String>, String)> {
+    /// Convert a list of strings in parallel (Rayon); same per-text shape as
+    /// `convert_detailed()`.
+    #[allow(clippy::type_complexity)]
+    pub fn convert_detailed_batch(
+        &self,
+        texts: &Bound<'_, PyList>,
+    ) -> PyResult<Vec<Vec<(String, String, String, String, String)>>> {
+        let inputs: Vec<String> = texts
+            .iter()
+            .map(|item| item.extract::<String>())
+            .collect::<PyResult<_>>()?;
+        Ok(self.inner.convert_detailed_batch(&inputs))
+    }
+
+    /// Convert text to a list of (token, candidate_readings, lang,
+    /// confidence, source) tuples. candidate_readings is rank-ordered
+    /// (most-likely first); it has more than one entry only where the
+    /// bundled data has 2+ known readings for that token (or, for OOV
+    /// single chars, that character). confidence is "certain" (no
+    /// ambiguity), "ranked" (ToJyutping's own context-aware ranking), or
+    /// "tied" (rime-cantonese arbitrary tie-break — no real preference
+    /// signal; also the default when the confidence sidecar has no entry
+    /// for an ambiguous token). No numeric probability is exposed — no
+    /// bundled source computes one honestly. source names the data layer
+    /// that produced candidate_readings[0]: "rime", "tojyutping",
+    /// "tojyutping_tiebreak", "oral_hk", "unihan", "user_dict",
+    /// "passthrough", "char_fallback", "unresolved", or "unknown".
+    #[allow(clippy::type_complexity)]
+    pub fn convert_candidates(
+        &self,
+        text: &str,
+    ) -> Vec<(String, Vec<String>, String, String, String)> {
         self.inner.convert_candidates(text)
     }
 
@@ -81,40 +111,12 @@ impl PyPipeline {
     pub fn convert_candidates_batch(
         &self,
         texts: &Bound<'_, PyList>,
-    ) -> PyResult<Vec<Vec<(String, Vec<String>, String)>>> {
+    ) -> PyResult<Vec<Vec<(String, Vec<String>, String, String, String)>>> {
         let inputs: Vec<String> = texts
             .iter()
             .map(|item| item.extract::<String>())
             .collect::<PyResult<_>>()?;
         Ok(self.inner.convert_candidates_batch(&inputs))
-    }
-
-    /// Convert text to a list of (token, candidate_readings, lang, confidence)
-    /// tuples. confidence is "certain" (no ambiguity), "ranked" (ToJyutping's
-    /// own context-aware ranking), or "tied" (rime-cantonese arbitrary
-    /// tie-break — no real preference signal; also the default when the
-    /// confidence sidecar has no entry for an ambiguous token). No numeric
-    /// probability is exposed — no bundled source computes one honestly.
-    #[allow(clippy::type_complexity)]
-    pub fn convert_candidates_scored(
-        &self,
-        text: &str,
-    ) -> Vec<(String, Vec<String>, String, String)> {
-        self.inner.convert_candidates_scored(text)
-    }
-
-    /// Convert a list of strings in parallel (Rayon); same per-text shape as
-    /// `convert_candidates_scored()`.
-    #[allow(clippy::type_complexity)]
-    pub fn convert_candidates_scored_batch(
-        &self,
-        texts: &Bound<'_, PyList>,
-    ) -> PyResult<Vec<Vec<(String, Vec<String>, String, String)>>> {
-        let inputs: Vec<String> = texts
-            .iter()
-            .map(|item| item.extract::<String>())
-            .collect::<PyResult<_>>()?;
-        Ok(self.inner.convert_candidates_scored_batch(&inputs))
     }
 
     /// Create a Pipeline loading dict files from an explicit directory path.

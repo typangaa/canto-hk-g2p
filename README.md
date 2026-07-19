@@ -47,10 +47,10 @@ The library is a standalone open-source deliverable — Cantonese TTS pre-proces
 - **Polyphone disambiguation** via longest-match word-level segmentation (~85% accuracy)
 - **`user_dict` runtime overrides** — `Pipeline(user_dict={"行": "hong4"})` locks a pronunciation above every bundled dictionary, and participates in segmentation so multi-char overrides aren't split apart
 - **`convert_candidates()`** / **`convert_candidates_batch()`** — Candidates API: rank-ordered alternate readings for polyphones (`正經` → `["zing3 ging1", "zing1 ging1"]`), instead of committing to a single one
-- **`convert_candidates_scored()`** / **`convert_candidates_scored_batch()`** — same, plus a categorical confidence tag (`"certain"` / `"ranked"` / `"tied"`) per ambiguous token
+- **Confidence + source tags** — every structured result carries a categorical confidence tag (`"certain"` / `"ranked"` / `"tied"`) and a data-layer source tag (`"rime"` / `"tojyutping"` / `"oral_hk"` / `"unihan"` / `"user_dict"` / ...) per token
 - **Rayon parallel batch processing** — scales to large corpora
 - **Zero runtime Python dependencies** — pronunciation dictionaries bundled in the wheel
-- **`convert_detailed()`** — structured `(token, jyutping, lang)` output with language tags (`yue` / `en` / `punct`)
+- **`convert_detailed()`** / **`convert_detailed_batch()`** — structured `(token, jyutping, lang, confidence, source)` output
 - **Apache-2.0 license**, permissive data sources only — safe to redistribute
 
 ---
@@ -106,9 +106,10 @@ p.convert("佢send咗email俾我")
 p.convert_batch(["香港", "銀行", "你好嘅"])
 # → ["hoeng1 gong2", "ngan4 hong4", "nei5 hou2 ge3"]
 
-# Structured output with language tags
+# Structured output with language, confidence, and source tags
 p.convert_detailed("香港 hello")
-# → [("香港", "hoeng1 gong2", "yue"), ("hello", "hello", "en")]
+# → [("香港", "hoeng1 gong2", "yue", "certain", "rime"),
+#     ("hello", "hello", "en", "certain", "passthrough")]
 ```
 
 ---
@@ -275,24 +276,46 @@ jyutping_to_ipa("hoeng1 gong2", tone="number")
 
 ---
 
-### `convert_detailed(text: str) -> list[tuple[str, str, str]]`
+### `confidence` and `source` — shared across `convert_detailed()` / `convert_candidates()`
 
-Returns a structured token-level breakdown. Each element is a 3-tuple `(token, jyutping, lang)`.
+Every structured result (`convert_detailed()`, `convert_candidates()`, and
+their batch siblings) carries two trailing fields:
+
+| Field | Type | Values |
+|---|---|---|
+| `confidence` | `str` | `"certain"` (no ambiguity), `"ranked"` (2+ candidates ordered by ToJyutping's own context-aware ranking — a real preference signal), `"tied"` (2+ candidates, but the order is rime-cantonese's raw arbitrary tie-break — no real preference signal; also the default when an ambiguous token has no entry in the bundled confidence data) |
+| `source` | `str` | Which data layer produced the rank-0 reading: `"rime"`, `"tojyutping"` (exact trie hit), `"tojyutping_tiebreak"` (rime tie resolved via ToJyutping's context segmentation, v1.7.1), `"oral_hk"` (hand-curated override), `"unihan"` (char-only fallback), `"user_dict"` (caller override), `"passthrough"` (non-CJK), `"char_fallback"` (OOV multi-char token — architecturally unreachable via real segmenter output), `"unresolved"` (truly unknown char), or `"unknown"` (source sidecar missing/no entry) |
+
+**No numeric probability is exposed, by design.** Neither ToJyutping's trie
+nor rime-cantonese's tied readings carry real frequency data — a float score
+per candidate would be fabricated, not measured. See CHANGELOG (v2.0.0) for
+the research behind this categorical-only design.
+
+---
+
+### `convert_detailed(text: str) -> list[tuple[str, str, str, str, str]]`
+
+Returns a structured token-level breakdown. Each element is a 5-tuple
+`(token, jyutping, lang, confidence, source)`.
 
 | Field | Type | Values |
 |---|---|---|
 | `token` | `str` | The original text span for this token |
-| `jyutping` | `str` | Space-separated Jyutping syllables for the token; equals `token` for Latin passthrough |
+| `jyutping` | `str` | Space-separated Jyutping syllables for the token (rank-0 reading); equals `token` for Latin passthrough |
 | `lang` | `str` | `"yue"` (Cantonese), `"en"` (English / Latin), `"punct"` (punctuation) |
+| `confidence` | `str` | See above |
+| `source` | `str` | See above |
 
 The joined jyutping from `convert_detailed()` is identical to the output of `convert()` for the same input.
 
 ```python
 p.convert_detailed("香港 hello")
-# → [("香港", "hoeng1 gong2", "yue"), ("hello", "hello", "en")]
+# → [("香港", "hoeng1 gong2", "yue", "certain", "rime"),
+#     ("hello", "hello", "en", "certain", "passthrough")]
 
 p.convert_detailed("你好，")
-# → [("你好", "nei5 hou2", "yue"), ("，", "，", "punct")]
+# → [("你", "nei5", "yue", "ranked", "tojyutping"), ("好", "hou2", "yue", "ranked", "tojyutping"),
+#     ("，", "，", "punct", "certain", "passthrough")]
 
 p.convert_detailed("2026年")
 # → all tokens tagged "yue" (normalizer expands digits to Chinese characters first)
@@ -301,19 +324,27 @@ p.convert_detailed("")
 # → []
 ```
 
+### `convert_detailed_batch(texts: list[str]) -> list[list[tuple[str, str, str, str, str]]]`
+
+Rayon-parallel batch sibling of `convert_detailed()` — same per-text output
+shape, one list per input text.
+
 ---
 
-### `convert_candidates(text: str) -> list[tuple[str, list[str], str]]`
+### `convert_candidates(text: str) -> list[tuple[str, list[str], str, str, str]]`
 
 The Candidates API — the text-level sibling of `convert_detailed()`. Returns
-`(token, candidate_readings, lang)` triples, where `candidate_readings` is a
-rank-ordered list (most-likely first) instead of a single committed string.
+`(token, candidate_readings, lang, confidence, source)` tuples, where
+`candidate_readings` is a rank-ordered list (most-likely first) instead of a
+single committed string.
 
 | Field | Type | Values |
 |---|---|---|
 | `token` | `str` | The original text span for this token |
 | `candidate_readings` | `list[str]` | Rank-ordered known readings for this token; length 1 unless ambiguous |
 | `lang` | `str` | `"yue"` (Cantonese), `"en"` (English / Latin), `"punct"` (punctuation) |
+| `confidence` | `str` | See above |
+| `source` | `str` | Which layer produced `candidate_readings[0]` — see above |
 
 `candidate_readings[0]` always equals the reading `convert()`/`convert_detailed()`
 commits to for that token. A list of length 1 means the bundled data has no
@@ -325,27 +356,28 @@ single candidate — an override is a final decision, not ambiguity to report.
 
 ```python
 p.convert_candidates("正經")
-# → [("正經", ["zing3 ging1", "zing1 ging1"], "yue")]   (known word-level polyphone)
+# → [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied", "tojyutping_tiebreak")]
 
 p.convert_candidates("香港")
-# → [("香港", ["hoeng1 gong2"], "yue")]                  (no known ambiguity)
+# → [("香港", ["hoeng1 gong2"], "yue", "certain", "rime")]   (no known ambiguity)
 
 p.convert_candidates("行")
-# → [("行", ["haang4", "hang4", "hong4", ...], "yue")]   (known char-level polyphone)
+# → [("行", ["haang4", "hang4", "hong4", ...], "yue", "ranked", "tojyutping")]
 
 p2 = Pipeline(user_dict={"正經": "zing1 ging1"})
 p2.convert_candidates("正經")
-# → [("正經", ["zing1 ging1"], "yue")]                   (override collapses ambiguity)
+# → [("正經", ["zing1 ging1"], "yue", "certain", "user_dict")]   (override collapses ambiguity)
 ```
 
 **Known limitation**: ambiguity is not surfaced across an out-of-vocabulary
 multi-char token's individual characters — such a token falls back to
-`convert_detailed()`'s single resolved reading. In practice this case cannot
-actually be reached through `convert_candidates()`: the segmenter only ever
-emits a multi-char token when it's an exact `word_dict`/`user_dict` hit, so
-every multi-char token already has a definite reading by construction.
+`convert_detailed()`'s single resolved reading (tagged `"char_fallback"`). In
+practice this case cannot actually be reached through `convert_candidates()`:
+the segmenter only ever emits a multi-char token when it's an exact
+`word_dict`/`user_dict` hit, so every multi-char token already has a definite
+reading by construction.
 
-### `convert_candidates_batch(texts: list[str]) -> list[list[tuple[str, list[str], str]]]`
+### `convert_candidates_batch(texts: list[str]) -> list[list[tuple[str, list[str], str, str, str]]]`
 
 Rayon-parallel batch sibling of `convert_candidates()` — same per-text output
 shape, one list per input text:
@@ -353,49 +385,9 @@ shape, one list per input text:
 ```python
 p.convert_candidates_batch(["正經", "香港銀行"])
 # → [
-#      [("正經", ["zing3 ging1", "zing1 ging1"], "yue")],
-#      [("香港", ["hoeng1 gong2"], "yue"), ("銀行", ["ngan4 hong4"], "yue")],
-#    ]
-```
-
-### `convert_candidates_scored(text: str) -> list[tuple[str, list[str], str, str]]`
-
-Same shape as `convert_candidates()`, plus a categorical `confidence` tag per
-token — useful for thresholding a human-QA review queue by "genuine near-tie"
-vs. "strong lean" instead of treating every ambiguous token the same.
-
-| `confidence` | Meaning |
-|---|---|
-| `"certain"` | Single known reading — no ambiguity to report |
-| `"ranked"` | 2+ candidates, ordered by ToJyutping's own context-aware ranking — a real preference signal |
-| `"tied"` | 2+ candidates, but the order is rime-cantonese's raw arbitrary tie-break — no real preference signal. Also the default when an ambiguous token has no entry in the bundled confidence data |
-
-```python
-p.convert_candidates_scored("正經")
-# → [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied")]
-
-p.convert_candidates_scored("行")
-# → [("行", ["haang4", "hang4", "hong4", ...], "yue", "ranked")]
-
-p.convert_candidates_scored("香港")
-# → [("香港", ["hoeng1 gong2"], "yue", "certain")]
-```
-
-**No numeric probability is exposed, by design.** Neither ToJyutping's trie
-nor rime-cantonese's tied readings carry real frequency data — a float score
-per candidate would be fabricated, not measured. See CHANGELOG (v1.11.0) for
-the research behind this categorical-only design.
-
-### `convert_candidates_scored_batch(texts: list[str]) -> list[list[tuple[str, list[str], str, str]]]`
-
-Rayon-parallel batch sibling of `convert_candidates_scored()` — same
-per-text output shape, one list per input text:
-
-```python
-p.convert_candidates_scored_batch(["正經", "香港"])
-# → [
-#      [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied")],
-#      [("香港", ["hoeng1 gong2"], "yue", "certain")],
+#      [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied", "tojyutping_tiebreak")],
+#      [("香港", ["hoeng1 gong2"], "yue", "certain", "rime"),
+#       ("銀行", ["ngan4 hong4"], "yue", "certain", "tojyutping")],
 #    ]
 ```
 
@@ -512,7 +504,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 163 Rust unit tests + 301 Python integration tests (464 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the Candidates API (`convert_candidates()` / `convert_candidates_batch()` / `convert_candidates_scored()` / `convert_candidates_scored_batch()`).
+All 159 Rust unit tests + 301 Python integration tests (460 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` / `convert_detailed_batch()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the Candidates API (`convert_candidates()` / `convert_candidates_batch()`) including its `confidence` and `source` tags.
 
 ---
 

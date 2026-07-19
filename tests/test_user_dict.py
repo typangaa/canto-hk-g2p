@@ -62,14 +62,14 @@ def test_override_scoped_to_its_own_pipeline_instance():
 def test_override_multi_char_word_not_split_by_segmenter():
     p = Pipeline(user_dict={"老世": "lou5 sai3"})
     detailed = p.convert_detailed("老世要求佢")
-    tokens = [tok for tok, _, _ in detailed]
+    tokens = [tok for tok, _, _, _, _ in detailed]
     assert "老世" in tokens  # not split into "老" + "世"
 
 
 def test_convert_detailed_reflects_override():
     p = Pipeline(user_dict={"正經": "zing1 ging1"})
     detailed = p.convert_detailed("正經嚟講")
-    matches = [(tok, jp) for tok, jp, lang in detailed if tok == "正經"]
+    matches = [(tok, jp) for tok, jp, lang, _, _ in detailed if tok == "正經"]
     assert matches == [("正經", "zing1 ging1")]
 
 

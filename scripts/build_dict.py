@@ -51,6 +51,8 @@ OUT_WORD_CANDIDATES_BIN = PKG_DATA_DIR / "word_candidates.bin"
 OUT_CHAR_CANDIDATES_BIN = PKG_DATA_DIR / "char_candidates.bin"
 OUT_WORD_CANDIDATES_CONFIDENCE_BIN = PKG_DATA_DIR / "word_candidates_confidence.bin"
 OUT_CHAR_CANDIDATES_CONFIDENCE_BIN = PKG_DATA_DIR / "char_candidates_confidence.bin"
+OUT_WORD_SOURCE_BIN = PKG_DATA_DIR / "word_source.bin"
+OUT_CHAR_SOURCE_BIN = PKG_DATA_DIR / "char_source.bin"
 CMUDICT_SRC = RAW_DIR / "cmudict" / "cmudict.dict"
 CMUDICT_DST = PKG_DATA_DIR / "cmudict.dict"
 
@@ -567,6 +569,18 @@ def main() -> None:
     word_entries.update(tied_overrides)      # re-disambiguates rime ties tojyutping_all missed
     word_entries.update(oral_dict)           # oral overrides everything
 
+    # Full-coverage source tag per word_entries key (issue #13) — mirrors the
+    # exact same priority chain above, one entry per word_entries key.
+    word_source: Dict[str, str] = {}
+    for w in rime_all:
+        word_source[w] = "rime"
+    for w in tojyutping_all:
+        word_source[w] = "tojyutping"
+    for w in tied_overrides:
+        word_source[w] = "tojyutping_tiebreak"
+    for w in oral_dict:
+        word_source[w] = "oral_hk"
+
     # ------------------------------------------------------------------
     # Step 5: Build char_entries (single chars only)
     #   Priority: oral > tojyutping_chars > rime_chars > unihan
@@ -579,6 +593,19 @@ def main() -> None:
     for word, jyut in oral_dict.items():      # oral overrides everything
         if len(word) == 1:
             char_entries[word] = jyut
+
+    # Full-coverage source tag per char_entries key (issue #13) — mirrors the
+    # exact same priority chain above.
+    char_source: Dict[str, str] = {}
+    for c in unihan_dict:
+        char_source[c] = "unihan"
+    for c in rime_chars:
+        char_source[c] = "rime"
+    for c in tojyutping_chars:
+        char_source[c] = "tojyutping"
+    for word in oral_dict:
+        if len(word) == 1:
+            char_source[word] = "oral_hk"
 
     # ------------------------------------------------------------------
     # Step 5b: Build Candidates API sidecars (Phase 7b-2) — sparse, only
@@ -602,6 +629,18 @@ def main() -> None:
             char_candidates.pop(word, None)
             char_candidates_confidence.pop(word, None)
 
+    # Sanity check: word_source/char_source must cover every key in
+    # word_entries/char_entries (issue #13) — both are built via the exact
+    # same priority chain, so a mismatch means the chains drifted apart.
+    assert word_source.keys() == word_entries.keys(), (
+        f"word_source coverage mismatch: {len(word_source):,} vs "
+        f"{len(word_entries):,} word_entries"
+    )
+    assert char_source.keys() == char_entries.keys(), (
+        f"char_source coverage mismatch: {len(char_source):,} vs "
+        f"{len(char_entries):,} char_entries"
+    )
+
     # ------------------------------------------------------------------
     # Step 6: Write binary files
     # ------------------------------------------------------------------
@@ -618,6 +657,10 @@ def main() -> None:
     word_confidence_bytes = write_bin(word_candidates_confidence, OUT_WORD_CANDIDATES_CONFIDENCE_BIN)
     print(f"[build]     Writing {OUT_CHAR_CANDIDATES_CONFIDENCE_BIN} ...")
     char_confidence_bytes = write_bin(char_candidates_confidence, OUT_CHAR_CANDIDATES_CONFIDENCE_BIN)
+    print(f"[build]     Writing {OUT_WORD_SOURCE_BIN} ...")
+    word_source_bytes = write_bin(word_source, OUT_WORD_SOURCE_BIN)
+    print(f"[build]     Writing {OUT_CHAR_SOURCE_BIN} ...")
+    char_source_bytes = write_bin(char_source, OUT_CHAR_SOURCE_BIN)
 
     # ------------------------------------------------------------------
     # Validate output files
@@ -629,6 +672,8 @@ def main() -> None:
     validate_bin(OUT_CHAR_CANDIDATES_BIN, len(char_candidates))
     validate_bin(OUT_WORD_CANDIDATES_CONFIDENCE_BIN, len(word_candidates_confidence))
     validate_bin(OUT_CHAR_CANDIDATES_CONFIDENCE_BIN, len(char_candidates_confidence))
+    validate_bin(OUT_WORD_SOURCE_BIN, len(word_source))
+    validate_bin(OUT_CHAR_SOURCE_BIN, len(char_source))
 
     # ------------------------------------------------------------------
     # Final stats
@@ -643,7 +688,12 @@ def main() -> None:
     print(f"  char_candidates.bin : {len(char_candidates):>8,} entries   {char_candidates_bytes:>10,} bytes  ({char_candidates_bytes / 1024:.1f} KiB)")
     print(f"  word_candidates_confidence.bin : {len(word_candidates_confidence):>8,} entries   {word_confidence_bytes:>10,} bytes  ({word_confidence_bytes / 1024:.1f} KiB)")
     print(f"  char_candidates_confidence.bin : {len(char_candidates_confidence):>8,} entries   {char_confidence_bytes:>10,} bytes  ({char_confidence_bytes / 1024:.1f} KiB)")
-    total = word_bytes + char_bytes + word_candidates_bytes + char_candidates_bytes + word_confidence_bytes + char_confidence_bytes
+    print(f"  word_source.bin     : {len(word_source):>8,} entries   {word_source_bytes:>10,} bytes  ({word_source_bytes / 1024:.1f} KiB)")
+    print(f"  char_source.bin     : {len(char_source):>8,} entries   {char_source_bytes:>10,} bytes  ({char_source_bytes / 1024:.1f} KiB)")
+    total = (
+        word_bytes + char_bytes + word_candidates_bytes + char_candidates_bytes
+        + word_confidence_bytes + char_confidence_bytes + word_source_bytes + char_source_bytes
+    )
     print(f"  total               :                     {total:>10,} bytes  ({total / 1024:.1f} KiB)")
     print()
     print(f"  oral_hk entries          : {len(oral_dict):,}")
@@ -660,6 +710,11 @@ def main() -> None:
     char_ranked = sum(1 for v in char_candidates_confidence.values() if v == "ranked")
     print(f"  word candidates ranked/tied : {word_ranked:,} / {len(word_candidates_confidence) - word_ranked:,}")
     print(f"  char candidates ranked/tied : {char_ranked:,} / {len(char_candidates_confidence) - char_ranked:,}")
+    from collections import Counter
+    word_source_counts = Counter(word_source.values())
+    char_source_counts = Counter(char_source.values())
+    print(f"  word source breakdown   : {dict(word_source_counts)}")
+    print(f"  char source breakdown   : {dict(char_source_counts)}")
     print("=" * 60)
 
     # Copy cmudict.dict into package data for bundling

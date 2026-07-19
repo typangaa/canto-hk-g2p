@@ -9,18 +9,24 @@ pub struct Pipeline {
     word_dict: Dict,
     char_dict: Dict,
     user_dict: UserDict,
-    /// Sparse rank-ordered candidate readings (Phase 7b-2), only present for
-    /// keys with 2+ known readings. `None` if the sidecar `.bin` file is
-    /// missing from the data directory — older/custom data dirs still work,
+    /// Sparse rank-ordered candidate readings, only present for keys with
+    /// 2+ known readings. `None` if the sidecar `.bin` file is missing from
+    /// the data directory — older/custom data dirs still work,
     /// `convert_candidates()` just reports no known ambiguity anywhere.
     word_candidates: Option<Dict>,
     char_candidates: Option<Dict>,
-    /// Categorical confidence tag per candidates key ("ranked" | "tied"),
-    /// Phase 7b-3 (issue #12). `None` if the sidecar `.bin` is missing —
-    /// `convert_candidates_scored()` then defaults every ambiguous token to
-    /// `"tied"` (the conservative assumption: no real preference signal).
+    /// Categorical confidence tag per candidates key ("ranked" | "tied").
+    /// `None` if the sidecar `.bin` is missing — an ambiguous token then
+    /// defaults to `"tied"` (the conservative assumption: no real
+    /// preference signal).
     word_candidates_confidence: Option<Dict>,
     char_candidates_confidence: Option<Dict>,
+    /// Full-coverage source tag per word_dict/char_dict key (which upstream
+    /// layer — rime / tojyutping / tojyutping_tiebreak / oral_hk / unihan —
+    /// produced that entry). `None` if the sidecar `.bin` is missing — a
+    /// dict hit then reports source `"unknown"`.
+    word_source: Option<Dict>,
+    char_source: Option<Dict>,
     pub punc_norm: bool,
 }
 
@@ -85,6 +91,8 @@ impl Pipeline {
             Dict::load(&dir.join("word_candidates_confidence.bin")).ok();
         let char_candidates_confidence =
             Dict::load(&dir.join("char_candidates_confidence.bin")).ok();
+        let word_source = Dict::load(&dir.join("word_source.bin")).ok();
+        let char_source = Dict::load(&dir.join("char_source.bin")).ok();
         Ok(Pipeline {
             word_dict,
             char_dict,
@@ -93,22 +101,42 @@ impl Pipeline {
             char_candidates,
             word_candidates_confidence,
             char_candidates_confidence,
+            word_source,
+            char_source,
             punc_norm,
         })
     }
 
-    pub fn convert(&self, text: &str) -> String {
-        if text.is_empty() {
-            return String::new();
-        }
+    fn tokens_for(&self, text: &str) -> Vec<String> {
         let pre = if self.punc_norm {
             normalizer::punc_norm(text)
         } else {
             text.to_owned()
         };
         let normalized = normalizer::normalize(&pre);
-        let tokens = segment::segment_owned(&normalized, &self.word_dict, &self.user_dict);
-        tokens
+        segment::segment_owned(&normalized, &self.word_dict, &self.user_dict)
+    }
+
+    fn resolve(&self, token: &str) -> g2p::Resolution {
+        g2p::resolve_token(
+            token,
+            &self.word_dict,
+            &self.char_dict,
+            &self.user_dict,
+            self.word_candidates.as_ref(),
+            self.char_candidates.as_ref(),
+            self.word_candidates_confidence.as_ref(),
+            self.char_candidates_confidence.as_ref(),
+            self.word_source.as_ref(),
+            self.char_source.as_ref(),
+        )
+    }
+
+    pub fn convert(&self, text: &str) -> String {
+        if text.is_empty() {
+            return String::new();
+        }
+        self.tokens_for(text)
             .iter()
             .map(|tok| {
                 g2p::token_to_jyutping(tok, &self.word_dict, &self.char_dict, &self.user_dict)
@@ -121,127 +149,92 @@ impl Pipeline {
         texts.par_iter().map(|t| self.convert(t)).collect()
     }
 
-    /// Convert text to structured (token, jyutping, lang) triples.
-    /// lang: "yue" = Cantonese CJK, "en" = Latin/English, "punct" = punctuation/symbol.
-    pub fn convert_detailed(&self, text: &str) -> Vec<(String, String, String)> {
+    /// Convert text to a list of (token, jyutping, lang, confidence, source)
+    /// tuples. `lang`: `"yue"` = Cantonese CJK, `"en"` = Latin/English,
+    /// `"punct"` = punctuation/symbol. `jyutping` is always the rank-0
+    /// (most-likely) reading — see `convert_candidates()` for the full
+    /// rank-ordered candidate list. `confidence`/`source` are described on
+    /// `convert_candidates()`.
+    pub fn convert_detailed(&self, text: &str) -> Vec<(String, String, String, String, String)> {
         if text.is_empty() {
             return vec![];
         }
-        let pre = if self.punc_norm {
-            normalizer::punc_norm(text)
-        } else {
-            text.to_owned()
-        };
-        let normalized = normalizer::normalize(&pre);
-        let tokens = segment::segment_owned(&normalized, &self.word_dict, &self.user_dict);
-        tokens
+        self.tokens_for(text)
             .into_iter()
             .map(|tok| {
-                let jp =
-                    g2p::token_to_jyutping(&tok, &self.word_dict, &self.char_dict, &self.user_dict);
+                let r = self.resolve(&tok);
                 let lang = classify_lang(&tok).to_owned();
-                (tok, jp, lang)
+                (tok, r.candidates[0].clone(), lang, r.confidence, r.source)
             })
             .collect()
     }
 
-    /// Convert text to a list of (token, candidate_readings, lang) triples.
+    /// Rayon-parallel batch sibling of `convert_detailed()` — same per-text
+    /// output shape, one `Vec` per input text.
+    #[allow(clippy::type_complexity)]
+    pub fn convert_detailed_batch(
+        &self,
+        texts: &[String],
+    ) -> Vec<Vec<(String, String, String, String, String)>> {
+        texts.par_iter().map(|t| self.convert_detailed(t)).collect()
+    }
+
+    /// Convert text to a list of (token, candidate_readings, lang,
+    /// confidence, source) tuples.
+    ///
     /// `candidate_readings` is rank-ordered (most-likely first); it has more
     /// than one entry only when the token (or, for OOV single chars, the
     /// character) has 2+ known readings in the bundled Candidates API data.
     /// Everything else — unambiguous words, English, punctuation, and OOV
     /// multi-char fallback tokens — reports a single-item list, exactly the
-    /// reading `convert_detailed()` would produce.
-    pub fn convert_candidates(&self, text: &str) -> Vec<(String, Vec<String>, String)> {
+    /// reading `convert()` would produce for that token.
+    ///
+    /// `confidence` is `"certain"` (no ambiguity), `"ranked"` (2+ candidates
+    /// ordered by ToJyutping's own context-aware ranking — a real
+    /// preference signal), or `"tied"` (2+ candidates, but the order is
+    /// rime-cantonese's raw arbitrary tie-break — no real preference
+    /// signal; also the default when the confidence sidecar has no entry
+    /// for an ambiguous token). No numeric probability is exposed by
+    /// design — neither ToJyutping's trie nor rime-cantonese's tied
+    /// readings carry real frequency data, so a float score would be
+    /// fabricated (see CHANGELOG).
+    ///
+    /// `source` names the data layer that produced `candidate_readings[0]`:
+    /// `"rime"`, `"tojyutping"` (exact trie hit), `"tojyutping_tiebreak"`
+    /// (rime tie resolved via ToJyutping's context segmentation, v1.7.1),
+    /// `"oral_hk"` (hand-curated override), `"unihan"` (char-only
+    /// fallback), `"user_dict"` (caller override — always `"certain"` too,
+    /// since an override is a final decision), `"passthrough"` (non-CJK),
+    /// `"char_fallback"` (OOV multi-char token, architecturally
+    /// unreachable via real segmenter output), `"unresolved"` (truly
+    /// unknown char), or `"unknown"` (source sidecar missing/no entry).
+    pub fn convert_candidates(
+        &self,
+        text: &str,
+    ) -> Vec<(String, Vec<String>, String, String, String)> {
         if text.is_empty() {
             return vec![];
         }
-        let pre = if self.punc_norm {
-            normalizer::punc_norm(text)
-        } else {
-            text.to_owned()
-        };
-        let normalized = normalizer::normalize(&pre);
-        let tokens = segment::segment_owned(&normalized, &self.word_dict, &self.user_dict);
-        tokens
+        self.tokens_for(text)
             .into_iter()
             .map(|tok| {
-                let candidates = g2p::token_to_jyutping_candidates(
-                    &tok,
-                    &self.word_dict,
-                    &self.char_dict,
-                    &self.user_dict,
-                    self.word_candidates.as_ref(),
-                    self.char_candidates.as_ref(),
-                );
+                let r = self.resolve(&tok);
                 let lang = classify_lang(&tok).to_owned();
-                (tok, candidates, lang)
+                (tok, r.candidates, lang, r.confidence, r.source)
             })
             .collect()
     }
 
     /// Rayon-parallel batch sibling of `convert_candidates()` — same
     /// per-text output shape, one `Vec` per input text.
+    #[allow(clippy::type_complexity)]
     pub fn convert_candidates_batch(
         &self,
         texts: &[String],
-    ) -> Vec<Vec<(String, Vec<String>, String)>> {
+    ) -> Vec<Vec<(String, Vec<String>, String, String, String)>> {
         texts
             .par_iter()
             .map(|t| self.convert_candidates(t))
-            .collect()
-    }
-
-    /// Convert text to a list of (token, candidate_readings, lang, confidence)
-    /// tuples (Phase 7b-3, issue #12). Same token/candidate/lang semantics as
-    /// `convert_candidates()`, plus a categorical confidence tag per token:
-    /// `"certain"` (no ambiguity), `"ranked"` (ToJyutping's own context-aware
-    /// ranking), or `"tied"` (rime-cantonese arbitrary tie-break — no real
-    /// preference signal; also the default when the confidence sidecar has
-    /// no entry for an ambiguous token).
-    pub fn convert_candidates_scored(
-        &self,
-        text: &str,
-    ) -> Vec<(String, Vec<String>, String, String)> {
-        if text.is_empty() {
-            return vec![];
-        }
-        let pre = if self.punc_norm {
-            normalizer::punc_norm(text)
-        } else {
-            text.to_owned()
-        };
-        let normalized = normalizer::normalize(&pre);
-        let tokens = segment::segment_owned(&normalized, &self.word_dict, &self.user_dict);
-        tokens
-            .into_iter()
-            .map(|tok| {
-                let (candidates, confidence) = g2p::token_to_jyutping_candidates_scored(
-                    &tok,
-                    &self.word_dict,
-                    &self.char_dict,
-                    &self.user_dict,
-                    self.word_candidates.as_ref(),
-                    self.char_candidates.as_ref(),
-                    self.word_candidates_confidence.as_ref(),
-                    self.char_candidates_confidence.as_ref(),
-                );
-                let lang = classify_lang(&tok).to_owned();
-                (tok, candidates, lang, confidence)
-            })
-            .collect()
-    }
-
-    /// Rayon-parallel batch sibling of `convert_candidates_scored()` — same
-    /// per-text output shape, one `Vec` per input text.
-    #[allow(clippy::type_complexity)]
-    pub fn convert_candidates_scored_batch(
-        &self,
-        texts: &[String],
-    ) -> Vec<Vec<(String, Vec<String>, String, String)>> {
-        texts
-            .par_iter()
-            .map(|t| self.convert_candidates_scored(t))
             .collect()
     }
 }
@@ -300,29 +293,37 @@ mod tests {
         f.write_all(&out).unwrap();
     }
 
-    /// Build a temp data dir with word.bin/char.bin, optionally with the
-    /// candidates sidecars. Returns the dir (kept alive via the returned
-    /// PathBuf's parent staying on disk for the test's duration — cleaned up
-    /// by the OS temp dir, matching the pattern used in other test modules).
+    /// Build a temp data dir with word.bin/char.bin and any of the optional
+    /// sidecars (candidates / confidence / source).
+    #[allow(clippy::too_many_arguments)]
     fn make_data_dir(
         word: &[(&str, &str)],
         chars: &[(&str, &str)],
         word_candidates: Option<&[(&str, &str)]>,
         char_candidates: Option<&[(&str, &str)]>,
     ) -> PathBuf {
-        make_data_dir_scored(word, chars, word_candidates, char_candidates, None, None)
+        make_data_dir_full(
+            word,
+            chars,
+            word_candidates,
+            char_candidates,
+            None,
+            None,
+            None,
+            None,
+        )
     }
 
-    /// Like `make_data_dir()`, but also optionally writes the confidence
-    /// sidecars (Phase 7b-3, issue #12).
     #[allow(clippy::too_many_arguments)]
-    fn make_data_dir_scored(
+    fn make_data_dir_full(
         word: &[(&str, &str)],
         chars: &[(&str, &str)],
         word_candidates: Option<&[(&str, &str)]>,
         char_candidates: Option<&[(&str, &str)]>,
         word_candidates_confidence: Option<&[(&str, &str)]>,
         char_candidates_confidence: Option<&[(&str, &str)]>,
+        word_source: Option<&[(&str, &str)]>,
+        char_source: Option<&[(&str, &str)]>,
     ) -> PathBuf {
         use std::time::{SystemTime, UNIX_EPOCH};
         let nanos = SystemTime::now()
@@ -346,15 +347,27 @@ mod tests {
         if let Some(ccc) = char_candidates_confidence {
             write_bin(&dir.join("char_candidates_confidence.bin"), ccc);
         }
+        if let Some(ws) = word_source {
+            write_bin(&dir.join("word_source.bin"), ws);
+        }
+        if let Some(cs) = char_source {
+            write_bin(&dir.join("char_source.bin"), cs);
+        }
         dir
     }
 
+    // ── convert_candidates ───────────────────────────────────────────────────
+
     #[test]
-    fn test_convert_candidates_reports_word_level_ambiguity() {
-        let dir = make_data_dir(
+    fn test_convert_candidates_reports_word_level_ambiguity_with_confidence_and_source() {
+        let dir = make_data_dir_full(
             &[("正經", "zing3 ging1")],
             &[],
             Some(&[("正經", "zing3 ging1|zing1 ging1")]),
+            None,
+            Some(&[("正經", "ranked")]),
+            None,
+            Some(&[("正經", "tojyutping")]),
             None,
         );
         let p = Pipeline::from_dir(&dir).unwrap();
@@ -364,14 +377,16 @@ mod tests {
             vec![(
                 "正經".to_string(),
                 vec!["zing3 ging1".to_string(), "zing1 ging1".to_string()],
-                "yue".to_string()
+                "yue".to_string(),
+                "ranked".to_string(),
+                "tojyutping".to_string(),
             )]
         );
     }
 
     #[test]
-    fn test_convert_candidates_missing_sidecars_behave_like_no_ambiguity() {
-        // No candidates sidecars at all — Pipeline must still construct and
+    fn test_convert_candidates_missing_sidecars_default_tied_unknown() {
+        // No sidecars at all — Pipeline must still construct and
         // convert_candidates() must fall back to a single reading per token.
         let dir = make_data_dir(&[("香港", "hoeng1 gong2")], &[], None, None);
         let p = Pipeline::from_dir(&dir).unwrap();
@@ -381,13 +396,29 @@ mod tests {
             vec![(
                 "香港".to_string(),
                 vec!["hoeng1 gong2".to_string()],
-                "yue".to_string()
+                "yue".to_string(),
+                "certain".to_string(),
+                "unknown".to_string(),
             )]
         );
     }
 
     #[test]
-    fn test_convert_candidates_user_dict_override_collapses_ambiguity() {
+    fn test_convert_candidates_ambiguous_missing_confidence_and_source_default() {
+        let dir = make_data_dir(
+            &[("正經", "zing3 ging1")],
+            &[],
+            Some(&[("正經", "zing3 ging1|zing1 ging1")]),
+            None,
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        let result = p.convert_candidates("正經");
+        assert_eq!(result[0].3, "tied");
+        assert_eq!(result[0].4, "unknown");
+    }
+
+    #[test]
+    fn test_convert_candidates_user_dict_override_collapses_ambiguity_source_user_dict() {
         let dir = make_data_dir(
             &[("正經", "zing3 ging1")],
             &[],
@@ -406,21 +437,35 @@ mod tests {
             vec![(
                 "正經".to_string(),
                 vec!["zing1 ging1".to_string()],
-                "yue".to_string()
+                "yue".to_string(),
+                "certain".to_string(),
+                "user_dict".to_string(),
             )]
         );
     }
 
     #[test]
-    fn test_convert_candidates_english_and_punct_single_item() {
+    fn test_convert_candidates_english_and_punct_passthrough_source() {
         let dir = make_data_dir(&[], &[], None, None);
         let p = Pipeline::from_dir(&dir).unwrap();
         let result = p.convert_candidates("hi!");
         assert_eq!(
             result,
             vec![
-                ("hi".to_string(), vec!["hi".to_string()], "en".to_string()),
-                ("!".to_string(), vec!["!".to_string()], "punct".to_string()),
+                (
+                    "hi".to_string(),
+                    vec!["hi".to_string()],
+                    "en".to_string(),
+                    "certain".to_string(),
+                    "passthrough".to_string(),
+                ),
+                (
+                    "!".to_string(),
+                    vec!["!".to_string()],
+                    "punct".to_string(),
+                    "certain".to_string(),
+                    "passthrough".to_string(),
+                ),
             ]
         );
     }
@@ -455,151 +500,130 @@ mod tests {
         assert_eq!(p.convert_candidates_batch(&[]), Vec::<Vec<_>>::new());
     }
 
-    // ── convert_candidates_scored (Phase 7b-3, issue #12) ────────────────────
+    // ── convert_detailed ─────────────────────────────────────────────────────
 
     #[test]
-    fn test_convert_candidates_scored_ranked() {
-        let dir = make_data_dir_scored(
+    fn test_convert_detailed_reports_rank0_confidence_and_source() {
+        let dir = make_data_dir_full(
             &[("正經", "zing3 ging1")],
             &[],
             Some(&[("正經", "zing3 ging1|zing1 ging1")]),
             None,
-            Some(&[("正經", "ranked")]),
+            Some(&[("正經", "tied")]),
+            None,
+            Some(&[("正經", "tojyutping_tiebreak")]),
             None,
         );
         let p = Pipeline::from_dir(&dir).unwrap();
-        let result = p.convert_candidates_scored("正經");
+        let result = p.convert_detailed("正經");
         assert_eq!(
             result,
             vec![(
                 "正經".to_string(),
-                vec!["zing3 ging1".to_string(), "zing1 ging1".to_string()],
+                "zing3 ging1".to_string(),
                 "yue".to_string(),
-                "ranked".to_string()
+                "tied".to_string(),
+                "tojyutping_tiebreak".to_string(),
             )]
         );
     }
 
     #[test]
-    fn test_convert_candidates_scored_tied() {
-        let dir = make_data_dir_scored(
-            &[("處理", "cyu2 lei5")],
+    fn test_convert_detailed_no_ambiguity_reports_source() {
+        let dir = make_data_dir_full(
+            &[("香港", "hoeng1 gong2")],
             &[],
-            Some(&[("處理", "cyu2 lei5|cyu5 lei5")]),
             None,
-            Some(&[("處理", "tied")]),
+            None,
+            None,
+            None,
+            Some(&[("香港", "rime")]),
             None,
         );
         let p = Pipeline::from_dir(&dir).unwrap();
-        let result = p.convert_candidates_scored("處理");
-        assert_eq!(result[0].3, "tied");
-    }
-
-    #[test]
-    fn test_convert_candidates_scored_missing_confidence_sidecar_defaults_tied() {
-        let dir = make_data_dir(
-            &[("正經", "zing3 ging1")],
-            &[],
-            Some(&[("正經", "zing3 ging1|zing1 ging1")]),
-            None,
-        );
-        let p = Pipeline::from_dir(&dir).unwrap();
-        let result = p.convert_candidates_scored("正經");
-        assert_eq!(result[0].3, "tied");
-    }
-
-    #[test]
-    fn test_convert_candidates_scored_no_ambiguity_is_certain() {
-        let dir = make_data_dir(&[("香港", "hoeng1 gong2")], &[], None, None);
-        let p = Pipeline::from_dir(&dir).unwrap();
-        let result = p.convert_candidates_scored("香港");
+        let result = p.convert_detailed("香港");
         assert_eq!(
             result,
             vec![(
                 "香港".to_string(),
-                vec!["hoeng1 gong2".to_string()],
+                "hoeng1 gong2".to_string(),
                 "yue".to_string(),
-                "certain".to_string()
+                "certain".to_string(),
+                "rime".to_string(),
             )]
         );
     }
 
     #[test]
-    fn test_convert_candidates_scored_user_dict_override_is_certain() {
-        let dir = make_data_dir_scored(
-            &[("正經", "zing3 ging1")],
-            &[],
-            Some(&[("正經", "zing3 ging1|zing1 ging1")]),
-            None,
-            Some(&[("正經", "ranked")]),
-            None,
-        );
-        let p = Pipeline::from_dir_opts_with_user_dict(
-            &dir,
-            true,
-            HashMap::from([("正經".to_string(), "zing1 ging1".to_string())]),
-        )
-        .unwrap();
-        let result = p.convert_candidates_scored("正經");
-        assert_eq!(result[0].3, "certain");
+    fn test_convert_detailed_empty_text() {
+        let dir = make_data_dir(&[], &[], None, None);
+        let p = Pipeline::from_dir(&dir).unwrap();
+        assert_eq!(p.convert_detailed(""), vec![]);
     }
 
     #[test]
-    fn test_convert_candidates_scored_english_and_punct_certain() {
+    fn test_convert_detailed_english_and_punct() {
         let dir = make_data_dir(&[], &[], None, None);
         let p = Pipeline::from_dir(&dir).unwrap();
-        let result = p.convert_candidates_scored("hi!");
+        let result = p.convert_detailed("hi!");
         assert_eq!(
             result,
             vec![
                 (
                     "hi".to_string(),
-                    vec!["hi".to_string()],
+                    "hi".to_string(),
                     "en".to_string(),
-                    "certain".to_string()
+                    "certain".to_string(),
+                    "passthrough".to_string(),
                 ),
                 (
                     "!".to_string(),
-                    vec!["!".to_string()],
+                    "!".to_string(),
                     "punct".to_string(),
-                    "certain".to_string()
+                    "certain".to_string(),
+                    "passthrough".to_string(),
                 ),
             ]
         );
     }
 
     #[test]
-    fn test_convert_candidates_scored_empty_text() {
-        let dir = make_data_dir(&[], &[], None, None);
-        let p = Pipeline::from_dir(&dir).unwrap();
-        assert_eq!(p.convert_candidates_scored(""), vec![]);
-    }
-
-    #[test]
-    fn test_convert_candidates_scored_batch_matches_per_text_calls() {
-        let dir = make_data_dir_scored(
-            &[("正經", "zing3 ging1"), ("香港", "hoeng1 gong2")],
+    fn test_convert_detailed_rank0_matches_convert() {
+        let dir = make_data_dir_full(
+            &[("正經", "zing3 ging1")],
             &[],
             Some(&[("正經", "zing3 ging1|zing1 ging1")]),
             None,
             Some(&[("正經", "ranked")]),
             None,
+            Some(&[("正經", "tojyutping")]),
+            None,
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        let detailed = p.convert_detailed("正經");
+        assert_eq!(detailed[0].1, p.convert("正經"));
+    }
+
+    #[test]
+    fn test_convert_detailed_batch_matches_per_text_calls() {
+        let dir = make_data_dir(
+            &[("正經", "zing3 ging1"), ("香港", "hoeng1 gong2")],
+            &[],
+            Some(&[("正經", "zing3 ging1|zing1 ging1")]),
+            None,
         );
         let p = Pipeline::from_dir(&dir).unwrap();
         let texts = vec!["正經".to_string(), "香港".to_string(), "hi!".to_string()];
-        let batch_result = p.convert_candidates_scored_batch(&texts);
-        let per_text_result: Vec<_> = texts
-            .iter()
-            .map(|t| p.convert_candidates_scored(t))
-            .collect();
+        let batch_result = p.convert_detailed_batch(&texts);
+        let per_text_result: Vec<_> = texts.iter().map(|t| p.convert_detailed(t)).collect();
         assert_eq!(batch_result, per_text_result);
         assert_eq!(batch_result.len(), 3);
     }
 
     #[test]
-    fn test_convert_candidates_scored_batch_empty_input() {
+    fn test_convert_detailed_batch_empty_input() {
         let dir = make_data_dir(&[], &[], None, None);
         let p = Pipeline::from_dir(&dir).unwrap();
-        assert_eq!(p.convert_candidates_scored_batch(&[]), Vec::<Vec<_>>::new());
+        assert_eq!(p.convert_detailed_batch(&[]), Vec::<Vec<_>>::new());
     }
 }

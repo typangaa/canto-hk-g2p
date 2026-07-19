@@ -65,74 +65,63 @@ pub fn token_to_jyutping<'a>(
     result
 }
 
-/// Convert a single token to its Jyutping candidate readings (Phase 7b-2).
+/// Full resolution of a single token (Phase 7b-4, 2.0.0 consolidation of
+/// issues #12 and #13): the rank-ordered candidate readings, a categorical
+/// confidence tag, and the data-layer source that produced the result.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Resolution {
+    /// Rank-ordered known readings (most-likely first). Length 1 unless the
+    /// token (or, for an OOV single char, the character) has 2+ known
+    /// readings in the bundled Candidates API data.
+    pub candidates: Vec<String>,
+    /// `"certain"` (no ambiguity), `"ranked"` (2+ candidates ordered by
+    /// ToJyutping's own context-aware ranking — a real preference signal),
+    /// or `"tied"` (2+ candidates, but the order is rime-cantonese's raw
+    /// arbitrary tie-break — no real signal; also the default when an
+    /// ambiguous token has no entry in the confidence sidecar).
+    pub confidence: String,
+    /// Which data layer produced `candidates[0]`: `"rime"`, `"tojyutping"`
+    /// (exact trie rank-0 hit), `"tojyutping_tiebreak"` (rime tie resolved
+    /// via ToJyutping's context-aware segmentation, v1.7.1),
+    /// `"oral_hk"` (hand-curated override), `"unihan"` (char-only fallback),
+    /// `"user_dict"` (caller-supplied runtime override), `"passthrough"`
+    /// (non-CJK — never touches a dict), `"char_fallback"` (OOV multi-char
+    /// token resolved via the per-character loop — architecturally
+    /// unreachable through real segmenter output, see known limitation),
+    /// `"unresolved"` (truly unknown char, kept as-is), or `"unknown"` (the
+    /// source sidecar has no entry / is missing for a dict hit — older or
+    /// custom data dirs).
+    pub source: String,
+}
+
+/// Resolve a single token to its full `Resolution` (candidates, confidence,
+/// source) — the shared core behind `Pipeline::convert_detailed()` and
+/// `Pipeline::convert_candidates()`.
 ///
 /// Mirrors `token_to_jyutping`'s lookup order, but surfaces every known
 /// alternate reading (rank-ordered, most-likely first) instead of committing
-/// to a single one:
-///   1. Non-CJK → passthrough, single candidate
+/// to a single one, plus where that reading and its ranking came from:
+///   1. Non-CJK → passthrough, single candidate, `"passthrough"` source
 ///   2. user_dict exact match → single candidate (an override is a final
-///      decision, not ambiguity to report)
-///   3. word_candidates exact match → its full rank-ordered candidate list
-///   4. word_dict exact match (no known alternates) → single candidate
-///   5. Single-char token → char_candidates exact match if present
+///      decision, not ambiguity to report), `"user_dict"` source
+///   3. word_candidates exact match → its full rank-ordered candidate list,
+///      confidence from `word_candidates_confidence`, source from `word_source`
+///   4. word_dict exact match (no known alternates) → single candidate,
+///      `"certain"`, source from `word_source`
+///   5. Single-char token → char_candidates / char_dict exact match if
+///      present, mirroring 3/4 with the char-level sidecars
 ///   6. Otherwise falls back to `token_to_jyutping`'s single resolved
 ///      reading — this includes multi-char OOV tokens resolved via the
 ///      per-character fallback loop, where ambiguity is not surfaced (each
 ///      char's own candidates are not combined; see CHANGELOG known
-///      limitation)
-pub fn token_to_jyutping_candidates<'a>(
-    token: &str,
-    word_dict: &'a Dict,
-    char_dict: &'a Dict,
-    user_dict: &'a UserDict,
-    word_candidates: Option<&'a Dict>,
-    char_candidates: Option<&'a Dict>,
-) -> Vec<String> {
-    if !is_cjk(token) {
-        return vec![token.to_owned()];
-    }
-
-    if let Some(jp) = user_dict.get(token) {
-        return vec![jp.to_owned()];
-    }
-
-    if let Some(cands) = word_candidates.and_then(|d| d.lookup(token)) {
-        return cands.split('|').map(str::to_owned).collect();
-    }
-
-    if let Some(jp) = word_dict.lookup(token) {
-        return vec![jp.to_owned()];
-    }
-
-    if token.chars().count() == 1 {
-        if let Some(cands) = char_candidates.and_then(|d| d.lookup(token)) {
-            return cands.split('|').map(str::to_owned).collect();
-        }
-    }
-
-    vec![token_to_jyutping(token, word_dict, char_dict, user_dict)]
-}
-
-/// Convert a single token to its Jyutping candidate readings plus a
-/// categorical confidence tag (Phase 7b-3, issue #12).
-///
-/// Mirrors `token_to_jyutping_candidates`'s lookup order and candidate list,
-/// but also reports where that ordering came from:
-///   - `"certain"`: a single known reading; no ambiguity to report.
-///   - `"ranked"`: 2+ candidates, ordered by ToJyutping's own context-aware
-///     ranking (a real preference signal).
-///   - `"tied"`: 2+ candidates, but the order is rime-cantonese's raw
-///     arbitrary tie-break (no real preference signal). Also the default
-///     when a confidence sidecar is missing or has no entry for an
-///     ambiguous token (older/custom data dirs), since that's the
-///     conservative assumption.
+///      limitation) — tagged `"char_fallback"`, or `"unresolved"` if the
+///      char was truly unknown and kept as-is.
 ///
 /// No numeric probability is exposed here by design — neither ToJyutping's
 /// trie nor rime-cantonese's tied readings carry real frequency data, so a
 /// float score would be fabricated (see CHANGELOG).
 #[allow(clippy::too_many_arguments)]
-pub fn token_to_jyutping_candidates_scored<'a>(
+pub fn resolve_token<'a>(
     token: &str,
     word_dict: &'a Dict,
     char_dict: &'a Dict,
@@ -141,13 +130,23 @@ pub fn token_to_jyutping_candidates_scored<'a>(
     char_candidates: Option<&'a Dict>,
     word_candidates_confidence: Option<&'a Dict>,
     char_candidates_confidence: Option<&'a Dict>,
-) -> (Vec<String>, String) {
+    word_source: Option<&'a Dict>,
+    char_source: Option<&'a Dict>,
+) -> Resolution {
     if !is_cjk(token) {
-        return (vec![token.to_owned()], "certain".to_owned());
+        return Resolution {
+            candidates: vec![token.to_owned()],
+            confidence: "certain".to_owned(),
+            source: "passthrough".to_owned(),
+        };
     }
 
     if let Some(jp) = user_dict.get(token) {
-        return (vec![jp.to_owned()], "certain".to_owned());
+        return Resolution {
+            candidates: vec![jp.to_owned()],
+            confidence: "certain".to_owned(),
+            source: "user_dict".to_owned(),
+        };
     }
 
     if let Some(cands) = word_candidates.and_then(|d| d.lookup(token)) {
@@ -155,11 +154,27 @@ pub fn token_to_jyutping_candidates_scored<'a>(
             .and_then(|d| d.lookup(token))
             .unwrap_or("tied")
             .to_owned();
-        return (cands.split('|').map(str::to_owned).collect(), confidence);
+        let source = word_source
+            .and_then(|d| d.lookup(token))
+            .unwrap_or("unknown")
+            .to_owned();
+        return Resolution {
+            candidates: cands.split('|').map(str::to_owned).collect(),
+            confidence,
+            source,
+        };
     }
 
     if let Some(jp) = word_dict.lookup(token) {
-        return (vec![jp.to_owned()], "certain".to_owned());
+        let source = word_source
+            .and_then(|d| d.lookup(token))
+            .unwrap_or("unknown")
+            .to_owned();
+        return Resolution {
+            candidates: vec![jp.to_owned()],
+            confidence: "certain".to_owned(),
+            source,
+        };
     }
 
     if token.chars().count() == 1 {
@@ -168,14 +183,44 @@ pub fn token_to_jyutping_candidates_scored<'a>(
                 .and_then(|d| d.lookup(token))
                 .unwrap_or("tied")
                 .to_owned();
-            return (cands.split('|').map(str::to_owned).collect(), confidence);
+            let source = char_source
+                .and_then(|d| d.lookup(token))
+                .unwrap_or("unknown")
+                .to_owned();
+            return Resolution {
+                candidates: cands.split('|').map(str::to_owned).collect(),
+                confidence,
+                source,
+            };
+        }
+
+        if let Some(jp) = char_dict.lookup(token) {
+            let source = char_source
+                .and_then(|d| d.lookup(token))
+                .unwrap_or("unknown")
+                .to_owned();
+            return Resolution {
+                candidates: vec![jp.to_owned()],
+                confidence: "certain".to_owned(),
+                source,
+            };
         }
     }
 
-    (
-        vec![token_to_jyutping(token, word_dict, char_dict, user_dict)],
-        "certain".to_owned(),
-    )
+    // Multi-char OOV fallback (architecturally unreachable via real
+    // segmenter output — segment_owned() only ever emits a multi-char token
+    // on an exact word_dict/user_dict hit) or a truly-unknown single char.
+    let jp = token_to_jyutping(token, word_dict, char_dict, user_dict);
+    let source = if jp == token {
+        "unresolved"
+    } else {
+        "char_fallback"
+    };
+    Resolution {
+        candidates: vec![jp],
+        confidence: "certain".to_owned(),
+        source: source.to_owned(),
+    }
 }
 
 #[cfg(test)]
@@ -236,6 +281,14 @@ mod tests {
         )
     }
 
+    fn res(candidates: &[&str], confidence: &str, source: &str) -> Resolution {
+        Resolution {
+            candidates: candidates.iter().map(|s| s.to_string()).collect(),
+            confidence: confidence.to_string(),
+            source: source.to_string(),
+        }
+    }
+
     #[test]
     fn test_english_passthrough_ignores_user_dict() {
         let wd = make_dict(&[]);
@@ -291,119 +344,29 @@ mod tests {
         assert_eq!(token_to_jyutping("香港", &wd, &cd, &ud), "hoeng1 gong2");
     }
 
-    // ── token_to_jyutping_candidates ────────────────────────────────────────
+    // ── resolve_token ─────────────────────────────────────────────────────────
 
     #[test]
-    fn test_candidates_english_passthrough() {
+    fn test_resolve_english_passthrough() {
         let wd = make_dict(&[]);
         let cd = make_dict(&[]);
         let ud = UserDict::new(HashMap::new());
         assert_eq!(
-            token_to_jyutping_candidates("hello", &wd, &cd, &ud, None, None),
-            vec!["hello".to_string()]
+            resolve_token("hello", &wd, &cd, &ud, None, None, None, None, None, None),
+            res(&["hello"], "certain", "passthrough")
         );
     }
 
     #[test]
-    fn test_candidates_word_level_ambiguity() {
-        let wd = make_dict(&[("正經", "zing3 ging1")]);
-        let cd = make_dict(&[]);
-        let ud = UserDict::new(HashMap::new());
-        let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
-        assert_eq!(
-            token_to_jyutping_candidates("正經", &wd, &cd, &ud, Some(&wcands), None),
-            vec!["zing3 ging1".to_string(), "zing1 ging1".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_candidates_no_ambiguity_falls_back_to_single_word_reading() {
-        let wd = make_dict(&[("香港", "hoeng1 gong2")]);
-        let cd = make_dict(&[]);
-        let ud = UserDict::new(HashMap::new());
-        let wcands = make_dict(&[]);
-        assert_eq!(
-            token_to_jyutping_candidates("香港", &wd, &cd, &ud, Some(&wcands), None),
-            vec!["hoeng1 gong2".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_candidates_single_char_ambiguity() {
-        let wd = make_dict(&[]);
-        let cd = make_dict(&[("行", "hong4")]);
-        let ud = UserDict::new(HashMap::new());
-        let ccands = make_dict(&[("行", "hong4|hang4|haang4")]);
-        assert_eq!(
-            token_to_jyutping_candidates("行", &wd, &cd, &ud, None, Some(&ccands)),
-            vec![
-                "hong4".to_string(),
-                "hang4".to_string(),
-                "haang4".to_string()
-            ]
-        );
-    }
-
-    #[test]
-    fn test_candidates_user_dict_overrides_and_collapses_ambiguity() {
+    fn test_resolve_user_dict_override() {
         let wd = make_dict(&[("正經", "zing3 ging1")]);
         let cd = make_dict(&[]);
         let ud = user(&[("正經", "zing1 ging1")]);
         let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
-        assert_eq!(
-            token_to_jyutping_candidates("正經", &wd, &cd, &ud, Some(&wcands), None),
-            vec!["zing1 ging1".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_candidates_multi_char_oov_fallback_not_combined() {
-        // Neither char is an exact word_dict/word_candidates hit, so this
-        // falls through to the per-char fallback loop — candidates are NOT
-        // combined across chars, matching token_to_jyutping's single result.
-        let wd = make_dict(&[]);
-        let cd = make_dict(&[("老", "lou5"), ("世", "sai3")]);
-        let ud = UserDict::new(HashMap::new());
-        let ccands = make_dict(&[("老", "lou5|lou2")]);
-        assert_eq!(
-            token_to_jyutping_candidates("老世", &wd, &cd, &ud, None, Some(&ccands)),
-            vec!["lou5 sai3".to_string()]
-        );
-    }
-
-    #[test]
-    fn test_candidates_missing_sidecars_behave_like_none() {
-        let wd = make_dict(&[("香港", "hoeng1 gong2")]);
-        let cd = make_dict(&[]);
-        let ud = UserDict::new(HashMap::new());
-        assert_eq!(
-            token_to_jyutping_candidates("香港", &wd, &cd, &ud, None, None),
-            vec!["hoeng1 gong2".to_string()]
-        );
-    }
-
-    // ── token_to_jyutping_candidates_scored ──────────────────────────────────
-
-    #[test]
-    fn test_scored_no_ambiguity_is_certain() {
-        let wd = make_dict(&[("香港", "hoeng1 gong2")]);
-        let cd = make_dict(&[]);
-        let ud = UserDict::new(HashMap::new());
-        assert_eq!(
-            token_to_jyutping_candidates_scored("香港", &wd, &cd, &ud, None, None, None, None),
-            (vec!["hoeng1 gong2".to_string()], "certain".to_string())
-        );
-    }
-
-    #[test]
-    fn test_scored_word_level_ranked() {
-        let wd = make_dict(&[("正經", "zing3 ging1")]);
-        let cd = make_dict(&[]);
-        let ud = UserDict::new(HashMap::new());
-        let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
         let wconf = make_dict(&[("正經", "ranked")]);
+        let wsrc = make_dict(&[("正經", "tojyutping")]);
         assert_eq!(
-            token_to_jyutping_candidates_scored(
+            resolve_token(
                 "正經",
                 &wd,
                 &cd,
@@ -411,24 +374,49 @@ mod tests {
                 Some(&wcands),
                 None,
                 Some(&wconf),
+                None,
+                Some(&wsrc),
                 None
             ),
-            (
-                vec!["zing3 ging1".to_string(), "zing1 ging1".to_string()],
-                "ranked".to_string()
-            )
+            res(&["zing1 ging1"], "certain", "user_dict")
         );
     }
 
     #[test]
-    fn test_scored_word_level_tied() {
+    fn test_resolve_word_level_ranked_with_source() {
+        let wd = make_dict(&[("正經", "zing3 ging1")]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
+        let wconf = make_dict(&[("正經", "ranked")]);
+        let wsrc = make_dict(&[("正經", "tojyutping")]);
+        assert_eq!(
+            resolve_token(
+                "正經",
+                &wd,
+                &cd,
+                &ud,
+                Some(&wcands),
+                None,
+                Some(&wconf),
+                None,
+                Some(&wsrc),
+                None
+            ),
+            res(&["zing3 ging1", "zing1 ging1"], "ranked", "tojyutping")
+        );
+    }
+
+    #[test]
+    fn test_resolve_word_level_tied_with_tiebreak_source() {
         let wd = make_dict(&[("處理", "cyu2 lei5")]);
         let cd = make_dict(&[]);
         let ud = UserDict::new(HashMap::new());
         let wcands = make_dict(&[("處理", "cyu2 lei5|cyu5 lei5")]);
         let wconf = make_dict(&[("處理", "tied")]);
+        let wsrc = make_dict(&[("處理", "tojyutping_tiebreak")]);
         assert_eq!(
-            token_to_jyutping_candidates_scored(
+            resolve_token(
                 "處理",
                 &wd,
                 &cd,
@@ -436,25 +424,48 @@ mod tests {
                 Some(&wcands),
                 None,
                 Some(&wconf),
+                None,
+                Some(&wsrc),
                 None
             ),
-            (
-                vec!["cyu2 lei5".to_string(), "cyu5 lei5".to_string()],
-                "tied".to_string()
-            )
+            res(&["cyu2 lei5", "cyu5 lei5"], "tied", "tojyutping_tiebreak")
         );
     }
 
     #[test]
-    fn test_scored_ambiguous_missing_confidence_sidecar_defaults_tied() {
-        // word_candidates has a row but the confidence sidecar is absent
-        // entirely (older/custom data dir) — must default to "tied", not panic.
+    fn test_resolve_no_ambiguity_reports_source_and_certain() {
+        let wd = make_dict(&[("香港", "hoeng1 gong2")]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        let wsrc = make_dict(&[("香港", "rime")]);
+        assert_eq!(
+            resolve_token(
+                "香港",
+                &wd,
+                &cd,
+                &ud,
+                None,
+                None,
+                None,
+                None,
+                Some(&wsrc),
+                None
+            ),
+            res(&["hoeng1 gong2"], "certain", "rime")
+        );
+    }
+
+    #[test]
+    fn test_resolve_missing_confidence_and_source_sidecars_default() {
+        // word_candidates has a row, but neither confidence nor source
+        // sidecar exists at all (older/custom data dir) — must default to
+        // "tied" / "unknown", not panic.
         let wd = make_dict(&[("正經", "zing3 ging1")]);
         let cd = make_dict(&[]);
         let ud = UserDict::new(HashMap::new());
         let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
         assert_eq!(
-            token_to_jyutping_candidates_scored(
+            resolve_token(
                 "正經",
                 &wd,
                 &cd,
@@ -462,24 +473,24 @@ mod tests {
                 Some(&wcands),
                 None,
                 None,
+                None,
+                None,
                 None
             ),
-            (
-                vec!["zing3 ging1".to_string(), "zing1 ging1".to_string()],
-                "tied".to_string()
-            )
+            res(&["zing3 ging1", "zing1 ging1"], "tied", "unknown")
         );
     }
 
     #[test]
-    fn test_scored_single_char_ambiguity() {
+    fn test_resolve_single_char_ambiguity_with_source() {
         let wd = make_dict(&[]);
         let cd = make_dict(&[("行", "hong4")]);
         let ud = UserDict::new(HashMap::new());
         let ccands = make_dict(&[("行", "hong4|hang4|haang4")]);
         let cconf = make_dict(&[("行", "ranked")]);
+        let csrc = make_dict(&[("行", "tojyutping")]);
         assert_eq!(
-            token_to_jyutping_candidates_scored(
+            resolve_token(
                 "行",
                 &wd,
                 &cd,
@@ -487,49 +498,70 @@ mod tests {
                 None,
                 Some(&ccands),
                 None,
-                Some(&cconf)
+                Some(&cconf),
+                None,
+                Some(&csrc)
             ),
-            (
-                vec![
-                    "hong4".to_string(),
-                    "hang4".to_string(),
-                    "haang4".to_string()
-                ],
-                "ranked".to_string()
-            )
+            res(&["hong4", "hang4", "haang4"], "ranked", "tojyutping")
         );
     }
 
     #[test]
-    fn test_scored_user_dict_override_is_certain() {
-        let wd = make_dict(&[("正經", "zing3 ging1")]);
-        let cd = make_dict(&[]);
-        let ud = user(&[("正經", "zing1 ging1")]);
-        let wcands = make_dict(&[("正經", "zing3 ging1|zing1 ging1")]);
-        let wconf = make_dict(&[("正經", "ranked")]);
+    fn test_resolve_single_char_no_ambiguity_reports_char_source() {
+        let wd = make_dict(&[]);
+        let cd = make_dict(&[("龍", "lung4")]);
+        let ud = UserDict::new(HashMap::new());
+        let csrc = make_dict(&[("龍", "unihan")]);
         assert_eq!(
-            token_to_jyutping_candidates_scored(
-                "正經",
+            resolve_token(
+                "龍",
                 &wd,
                 &cd,
                 &ud,
-                Some(&wcands),
                 None,
-                Some(&wconf),
-                None
+                None,
+                None,
+                None,
+                None,
+                Some(&csrc)
             ),
-            (vec!["zing1 ging1".to_string()], "certain".to_string())
+            res(&["lung4"], "certain", "unihan")
         );
     }
 
     #[test]
-    fn test_scored_english_passthrough_is_certain() {
+    fn test_resolve_multi_char_oov_fallback_is_char_fallback() {
+        // Neither char is an exact word_dict/word_candidates hit, so this
+        // falls through to the per-char fallback loop — candidates are NOT
+        // combined across chars, matching token_to_jyutping's single result.
+        let wd = make_dict(&[]);
+        let cd = make_dict(&[("老", "lou5"), ("世", "sai3")]);
+        let ud = UserDict::new(HashMap::new());
+        assert_eq!(
+            resolve_token("老世", &wd, &cd, &ud, None, None, None, None, None, None),
+            res(&["lou5 sai3"], "certain", "char_fallback")
+        );
+    }
+
+    #[test]
+    fn test_resolve_truly_unknown_char_is_unresolved() {
         let wd = make_dict(&[]);
         let cd = make_dict(&[]);
         let ud = UserDict::new(HashMap::new());
         assert_eq!(
-            token_to_jyutping_candidates_scored("hello", &wd, &cd, &ud, None, None, None, None),
-            (vec!["hello".to_string()], "certain".to_string())
+            resolve_token("龘", &wd, &cd, &ud, None, None, None, None, None, None),
+            res(&["龘"], "certain", "unresolved")
+        );
+    }
+
+    #[test]
+    fn test_resolve_missing_all_sidecars_behaves_like_none() {
+        let wd = make_dict(&[("香港", "hoeng1 gong2")]);
+        let cd = make_dict(&[]);
+        let ud = UserDict::new(HashMap::new());
+        assert_eq!(
+            resolve_token("香港", &wd, &cd, &ud, None, None, None, None, None, None),
+            res(&["hoeng1 gong2"], "certain", "unknown")
         );
     }
 }

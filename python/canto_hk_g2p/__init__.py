@@ -138,31 +138,58 @@ class Pipeline:
         """
         return self._inner.convert_batch(texts)
 
-    def convert_detailed(self, text: str) -> list[tuple[str, str, str]]:
-        """Convert text to a list of (token, jyutping, lang) triples.
+    def convert_detailed(
+        self, text: str
+    ) -> list[tuple[str, str, str, str, str]]:
+        """Convert text to a list of (token, jyutping, lang, confidence, source) tuples.
 
         Provides token-level structured output for downstream processing.
+        ``jyutping`` is always the rank-0 (most-likely) reading — see
+        :meth:`convert_candidates` for the full rank-ordered candidate list.
 
         Args:
             text: Input text (Cantonese, English, or mixed).
 
         Returns:
-            List of ``(token, jyutping, lang)`` tuples, one per token.
-            ``lang`` is one of:
+            List of ``(token, jyutping, lang, confidence, source)`` tuples,
+            one per token. ``lang`` is one of:
 
               - ``"yue"``   — Cantonese CJK token
               - ``"en"``    — Latin/English token (jyutping == token, passthrough)
               - ``"punct"`` — punctuation or other symbol
 
+            ``confidence``/``source`` are described on :meth:`convert_candidates`.
+
         Example::
 
             p.convert_detailed("香港 hello")
-            # → [("香港", "hoeng1 gong2", "yue"), ("hello", "hello", "en")]
+            # → [("香港", "hoeng1 gong2", "yue", "certain", "rime"),
+            #     ("hello", "hello", "en", "certain", "passthrough")]
         """
         return self._inner.convert_detailed(text)
 
-    def convert_candidates(self, text: str) -> list[tuple[str, list[str], str]]:
-        """Convert text to a list of (token, candidate_readings, lang) triples.
+    def convert_detailed_batch(
+        self, texts: list[str]
+    ) -> list[list[tuple[str, str, str, str, str]]]:
+        """Convert a list of strings in parallel using Rayon.
+
+        Batch sibling of :meth:`convert_detailed` — same per-text output
+        shape, one list of ``(token, jyutping, lang, confidence, source)``
+        tuples per input text.
+
+        Args:
+            texts: List of input strings.
+
+        Returns:
+            List of per-text ``convert_detailed()`` results, same length
+            and order as ``texts``.
+        """
+        return self._inner.convert_detailed_batch(texts)
+
+    def convert_candidates(
+        self, text: str
+    ) -> list[tuple[str, list[str], str, str, str]]:
+        """Convert text to a list of (token, candidate_readings, lang, confidence, source) tuples.
 
         Surfaces every known alternate reading for a polyphone (多音字) instead
         of committing to a single one — for downstream uses like letting a
@@ -180,59 +207,6 @@ class Pipeline:
         A ``user_dict`` override always collapses to a single candidate: an
         override is a final decision, not ambiguity to report.
 
-        Args:
-            text: Input text (Cantonese, English, or mixed).
-
-        Returns:
-            List of ``(token, candidate_readings, lang)`` tuples, one per token.
-
-        Example::
-
-            p.convert_candidates("正經")
-            # → [("正經", ["zing3 ging1", "zing1 ging1"], "yue")]
-
-            p.convert_candidates("香港")
-            # → [("香港", ["hoeng1 gong2"], "yue")]   (no known ambiguity)
-        """
-        return self._inner.convert_candidates(text)
-
-    def convert_candidates_batch(
-        self, texts: list[str]
-    ) -> list[list[tuple[str, list[str], str]]]:
-        """Convert a list of strings in parallel using Rayon.
-
-        Batch sibling of :meth:`convert_candidates` — same per-text output
-        shape, one list of ``(token, candidate_readings, lang)`` tuples per
-        input text.
-
-        Args:
-            texts: List of input strings.
-
-        Returns:
-            List of per-text ``convert_candidates()`` results, same length
-            and order as ``texts``.
-
-        Example::
-
-            p.convert_candidates_batch(["正經", "香港"])
-            # → [
-            #      [("正經", ["zing3 ging1", "zing1 ging1"], "yue")],
-            #      [("香港", ["hoeng1 gong2"], "yue")],
-            #    ]
-        """
-        return self._inner.convert_candidates_batch(texts)
-
-    def convert_candidates_scored(
-        self, text: str
-    ) -> list[tuple[str, list[str], str, str]]:
-        """Convert text to a list of (token, candidate_readings, lang, confidence) tuples.
-
-        Same shape as :meth:`convert_candidates`, plus a categorical
-        confidence tag per token — useful for thresholding a human-QA review
-        queue by "genuine near-tie" vs. "strong lean" instead of treating
-        every ambiguous token the same (see `#12
-        <https://github.com/typangaa/canto-hk-g2p/issues/12>`_).
-
         ``confidence`` is one of:
 
         - ``"certain"``: a single known reading; no ambiguity to report.
@@ -246,50 +220,69 @@ class Pipeline:
         No numeric probability is exposed by design: neither ToJyutping's
         trie nor rime-cantonese's tied readings carry real frequency data,
         so a float score would be fabricated rather than measured. See
-        CHANGELOG for the research behind this categorical-only design.
+        CHANGELOG for the research behind this categorical-only design
+        (`#12 <https://github.com/typangaa/canto-hk-g2p/issues/12>`_).
+
+        ``source`` names the data layer that produced ``candidate_readings[0]``
+        (`#13 <https://github.com/typangaa/canto-hk-g2p/issues/13>`_):
+
+        - ``"rime"``: rime-cantonese dictionary entry.
+        - ``"tojyutping"``: exact ToJyutping trie rank-0 hit.
+        - ``"tojyutping_tiebreak"``: a rime-cantonese arbitrary tie resolved
+          via ToJyutping's context-aware segmentation (v1.7.1).
+        - ``"oral_hk"``: hand-curated HK colloquial override.
+        - ``"unihan"``: Unihan ``kCantonese`` char-only fallback.
+        - ``"user_dict"``: caller-supplied runtime override.
+        - ``"passthrough"``: non-CJK token (English, punctuation, digits).
+        - ``"char_fallback"``: an out-of-vocabulary multi-char token resolved
+          via the per-character fallback loop — architecturally unreachable
+          through real segmenter output (see CHANGELOG known limitation).
+        - ``"unresolved"``: a truly unknown character, kept as-is.
+        - ``"unknown"``: the source sidecar has no entry (or is missing) for
+          an otherwise-resolved dict hit — older/custom data directories.
 
         Args:
             text: Input text (Cantonese, English, or mixed).
 
         Returns:
-            List of ``(token, candidate_readings, lang, confidence)`` tuples,
-            one per token.
+            List of ``(token, candidate_readings, lang, confidence, source)``
+            tuples, one per token.
 
         Example::
 
-            p.convert_candidates_scored("正經")
-            # → [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "ranked")]
+            p.convert_candidates("正經")
+            # → [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied", "tojyutping_tiebreak")]
 
-            p.convert_candidates_scored("香港")
-            # → [("香港", ["hoeng1 gong2"], "yue", "certain")]
+            p.convert_candidates("香港")
+            # → [("香港", ["hoeng1 gong2"], "yue", "certain", "rime")]   (no known ambiguity)
         """
-        return self._inner.convert_candidates_scored(text)
+        return self._inner.convert_candidates(text)
 
-    def convert_candidates_scored_batch(
+    def convert_candidates_batch(
         self, texts: list[str]
-    ) -> list[list[tuple[str, list[str], str, str]]]:
+    ) -> list[list[tuple[str, list[str], str, str, str]]]:
         """Convert a list of strings in parallel using Rayon.
 
-        Batch sibling of :meth:`convert_candidates_scored` — same per-text
-        output shape, one list of ``(token, candidate_readings, lang,
-        confidence)`` tuples per input text.
+        Batch sibling of :meth:`convert_candidates` — same per-text output
+        shape, one list of ``(token, candidate_readings, lang, confidence,
+        source)`` tuples per input text.
 
         Args:
             texts: List of input strings.
 
         Returns:
-            List of per-text ``convert_candidates_scored()`` results, same
-            length and order as ``texts``.
+            List of per-text ``convert_candidates()`` results, same length
+            and order as ``texts``.
 
         Example::
 
-            p.convert_candidates_scored_batch(["正經", "香港"])
+            p.convert_candidates_batch(["正經", "香港"])
             # → [
-            #      [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "ranked")],
-            #      [("香港", ["hoeng1 gong2"], "yue", "certain")],
+            #      [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied", "tojyutping_tiebreak")],
+            #      [("香港", ["hoeng1 gong2"], "yue", "certain", "rime")],
             #    ]
         """
-        return self._inner.convert_candidates_scored_batch(texts)
+        return self._inner.convert_candidates_batch(texts)
 
     def convert_ipa(
         self,
@@ -326,7 +319,7 @@ class Pipeline:
         from ._cmu import english_word_to_ipa
 
         parts: list[str] = []
-        for token, jyutping, lang in self._inner.convert_detailed(text):
+        for token, jyutping, lang, _, _ in self._inner.convert_detailed(text):
             if lang == "yue":
                 ipa_syls = [syllable_to_ipa(syl, tone) for syl in jyutping.split()]
                 parts.append(" ".join(ipa_syls))

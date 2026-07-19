@@ -4,38 +4,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.11.0] — 2026-07-19
+## [2.0.0] — 2026-07-19
+
+### Breaking changes — Migration guide
+
+`convert_detailed()`, `convert_candidates()`, and `convert_candidates_batch()`
+each gained two new trailing tuple fields — `confidence` and `source` (see
+below). Any code that unpacks their tuples by exact arity needs updating:
+
+```python
+# Before (v1.x)
+for token, jyutping, lang in p.convert_detailed(text):
+    ...
+for token, candidates, lang in p.convert_candidates(text):
+    ...
+
+# After (v2.0.0)
+for token, jyutping, lang, confidence, source in p.convert_detailed(text):
+    ...
+for token, candidates, lang, confidence, source in p.convert_candidates(text):
+    ...
+
+# Or, if you don't need the new fields, unpack with a starred catch-all:
+for token, jyutping, lang, *_ in p.convert_detailed(text):
+    ...
+```
+
+`convert()` and `convert_batch()` (plain-string output) are **unchanged**.
+`Pipeline.convert_candidates_scored()` / `convert_candidates_scored_batch()`
+— added and removed within the same unreleased development cycle (never
+published to PyPI) — no longer exist; their confidence tag is now always
+present directly on `convert_candidates()`.
 
 ### Added
 
-**`Pipeline.convert_candidates_scored()` / `convert_candidates_scored_batch()`**
-— categorical confidence tag per ambiguous token, closing
-[#12](https://github.com/typangaa/canto-hk-g2p/issues/12):
-`canto-hk-speech-pipeline` wanted to distinguish a genuine near-tie polyphone
-from a strong lean when thresholding a human-QA review queue, since
-`convert_candidates()` alone can only signal "2+ known readings," treating
-every ambiguity the same regardless of how confident the underlying data
-actually is.
+**`confidence` field** (closes
+[#12](https://github.com/typangaa/canto-hk-g2p/issues/12)): lets a caller
+distinguish a genuine near-tie polyphone from a strong lean when
+thresholding a human-QA review queue, since candidate-list length alone
+can only signal "2+ known readings," treating every ambiguity the same
+regardless of how confident the underlying data actually is. One of:
 
-```python
-p.convert_candidates_scored("正經")
-# → [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied")]
+- `"certain"` — a single known reading; no ambiguity to report.
+- `"ranked"` — 2+ candidates, ordered by ToJyutping's own context-aware
+  ranking — a real preference signal.
+- `"tied"` — 2+ candidates, but the order is rime-cantonese's raw arbitrary
+  tie-break — no real preference signal. Also the default when an
+  ambiguous token has no entry in the bundled confidence data.
 
-p.convert_candidates_scored("行")
-# → [("行", ["haang4", "hang4", ...], "yue", "ranked")]
-
-p.convert_candidates_scored("香港")
-# → [("香港", ["hoeng1 gong2"], "yue", "certain")]
-```
-
-`confidence` is one of `"certain"` (no ambiguity), `"ranked"` (2+ candidates
-ordered by ToJyutping's own context-aware ranking — a real preference
-signal), or `"tied"` (2+ candidates, but the order is rime-cantonese's raw
-arbitrary tie-break — no real preference signal; also the default for an
-ambiguous token when the bundled confidence data has no entry for it).
-
-**No numeric probability is exposed, by design.** The issue's original
-proposal was a float score per candidate (e.g. `0.82`/`0.18`). Before
+**No numeric probability is exposed, by design.** The obvious API shape
+would be a float score per candidate (e.g. `0.82`/`0.18`). Before
 implementing, we researched how comparable tools represent this:
 
 - **g2pW** (SOTA neural Mandarin polyphone disambiguator) computes softmax
@@ -58,18 +76,73 @@ fundamentally different (audio-grounded) process. A fabricated float would
 overclaim precision the underlying data doesn't have — the categorical tag
 is the honest representation.
 
-Data layer: `scripts/build_dict.py`'s `build_candidates()` now also returns
-a confidence dict (`"ranked"` for entries sourced from ToJyutping's own
-candidate ranking, `"tied"` for rime-cantonese's raw tie-break fallback),
-written to two new sparse sidecars — `word_candidates_confidence.bin` /
-`char_candidates_confidence.bin` — with 1:1 key coverage against
-`word_candidates.bin` / `char_candidates.bin`. New Rust function
-`g2p::token_to_jyutping_candidates_scored()` (mirrors
-`token_to_jyutping_candidates()`'s lookup order) + `Pipeline` methods +
-pyo3 bindings (`src/lib.rs`). 16 new Rust unit tests + 12 new Python tests
-(`tests/test_candidates.py`).
+**`source` field** (closes
+[#13](https://github.com/typangaa/canto-hk-g2p/issues/13)): names which
+data layer produced the rank-0 (committed) reading — useful for building a
+project-specific `user_dict` for domain proper nouns by distinguishing
+"this reading came from the generic Unihan char fallback" (likely wrong for
+a multi-character proper noun) from a real dictionary hit, or for debugging
+whether a wrong reading traces back to a hand-curated override vs. a gap in
+the bundled dictionaries. One of `"rime"`, `"tojyutping"` (exact trie hit),
+`"tojyutping_tiebreak"` (rime tie resolved via ToJyutping's context
+segmentation, v1.7.1), `"oral_hk"` (hand-curated override), `"unihan"`
+(char-only fallback), `"user_dict"` (caller override), `"passthrough"`
+(non-CJK), `"char_fallback"` (OOV multi-char token — architecturally
+unreachable via real segmenter output), `"unresolved"` (truly unknown
+char), or `"unknown"` (source sidecar missing/no entry).
 
-[1.11.0]: https://github.com/typangaa/canto-hk-g2p/compare/v1.10.0...v1.11.0
+```python
+p.convert_candidates("正經")
+# → [("正經", ["zing3 ging1", "zing1 ging1"], "yue", "tied", "tojyutping_tiebreak")]
+
+p.convert_candidates("行")
+# → [("行", ["haang4", "hang4", ...], "yue", "ranked", "tojyutping")]
+
+p.convert_candidates("香港")
+# → [("香港", ["hoeng1 gong2"], "yue", "certain", "rime")]
+
+p.convert_detailed("香港 hello")
+# → [("香港", "hoeng1 gong2", "yue", "certain", "rime"),
+#     ("hello", "hello", "en", "certain", "passthrough")]
+```
+
+**`Pipeline.convert_detailed_batch(texts)`** — new Rayon-parallel batch
+sibling of `convert_detailed()`, completing batch-parity across every
+structured method (`convert_detailed_batch()` / `convert_candidates_batch()`).
+
+### Changed (data layer)
+
+- `scripts/build_dict.py`'s `build_candidates()` now also returns a
+  confidence dict (`"ranked"` for entries sourced from ToJyutping's own
+  candidate ranking, `"tied"` for rime-cantonese's raw tie-break fallback),
+  written to two new sparse sidecars — `word_candidates_confidence.bin` /
+  `char_candidates_confidence.bin` — with 1:1 key coverage against
+  `word_candidates.bin` / `char_candidates.bin`.
+- New **full-coverage** sidecars `word_source.bin` (141,818 entries) /
+  `char_source.bin` (32,376 entries) — every `word.bin`/`char.bin` key
+  tagged with its winning upstream layer, mirroring `word_entries`'/
+  `char_entries`' own merge-priority chain exactly (verified 1:1 coverage
+  via a build-time assertion). Real corpus breakdown: word source is
+  93,012 rime / 47,457 tojyutping / 1,290 tojyutping_tiebreak / 59 oral_hk;
+  char source is 30,149 tojyutping / 2,154 unihan / 57 oral_hk / 16 rime.
+  This is a genuine data-size increase (total bundled data: 6.2 MiB →
+  10.4 MiB) since, unlike the sparse confidence/candidates sidecars, source
+  provenance is tracked for every dictionary entry, not just ambiguous ones.
+- `pyproject.toml`'s `[tool.maturin] include` list updated with all four new
+  sidecars (gitignored generated files that must be explicitly whitelisted
+  for the wheel — a gap in v1.11.0's local-only development caught before
+  release).
+
+### Internal
+
+New Rust `g2p::resolve_token()` (returns a `Resolution { candidates,
+confidence, source }` struct) replaces the separate
+`token_to_jyutping_candidates()` / `token_to_jyutping_candidates_scored()`
+functions, unifying the shared lookup-order logic behind both
+`Pipeline::convert_detailed()` and `Pipeline::convert_candidates()`.
+159 Rust unit tests + 301 Python integration tests, all passing.
+
+[2.0.0]: https://github.com/typangaa/canto-hk-g2p/compare/v1.9.0...v2.0.0
 
 ## [1.10.0] — 2026-07-19
 
