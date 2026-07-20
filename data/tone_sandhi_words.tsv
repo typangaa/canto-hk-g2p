@@ -23,3 +23,26 @@
 新聞	san1 man2
 無喇喇	mou4 laa1 laa1
 之類	zi1 leoi2
+#
+# Batch 2 (2026-07-20, continued review of the 307-row tone_review_queue.tsv):
+# single-character nominal/slang changed-tone readings, kept ONLY where the
+# bare standalone character has no common competing verb/dominant-meaning
+# reading that this word-level entry would silently overwrite. Existing
+# multi-char compounds (光碟/影相/排隊/有份/朋友/計仔/麻雀 etc.) already carry
+# their own correct entries and are unaffected — longest-match segmentation
+# always prefers them over these single-char fallback entries.
+#
+# Rejected from this batch: 帶 (daai3→daai2) and 袋 (doi6→doi2) — both have a
+# common standalone VERB reading (帶=拎/帶路 daai3; 袋=放入袋 doi6) that is at
+# least as frequent as the noun reading HKCanCor flagged; a word-level entry
+# can't distinguish syntactic function, so adding it would break sentences
+# like 「你帶咗遮未」/「袋定啲錢」. 橋 (kiu4→kiu2) — bare 橋 overwhelmingly
+# means "bridge" (kiu4); the kiu2 "idea/trick" slang sense only occurs in
+# compounds like 度橋, which already resolve correctly on their own.
+碟	dip2
+相	soeng2
+隊	deoi2
+份	fan2
+友	jau2
+計	gai2
+雀	zoek2

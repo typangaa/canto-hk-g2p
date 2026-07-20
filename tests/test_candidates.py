@@ -23,7 +23,10 @@ correctly-spelled canonical word's reading — see data/variant_words.tsv.
 override: the word's real spoken tone (found by diffing HKCanCor's
 transcribed corpus against citation-tone output, then confirmed by a native
 speaker) differs from what the citation-tone character fallback would
-produce — see data/tone_sandhi_words.tsv.
+produce — see data/tone_sandhi_words.tsv. Batch 2 extends this to
+single-character words, but only where the bare character has no common
+competing verb/dominant-meaning reading (帶/袋/橋 were rejected for exactly
+that reason).
 
 Run from repo root:  pytest tests/ -v
 """
@@ -299,6 +302,66 @@ def test_hkcancor_verified_does_not_corrupt_native_reading(p):
     assert p.convert("種類") == "zung2 leoi6"
     assert p.convert("籌備") == "cau4 bei6"
     assert p.convert("喇叭") == "laa3 baa1"
+
+
+@pytest.mark.parametrize("word,expected", [
+    ("碟", "dip2"),
+    ("相", "soeng2"),
+    ("隊", "deoi2"),
+    ("份", "fan2"),
+    ("友", "jau2"),
+    ("計", "gai2"),
+    ("雀", "zoek2"),
+])
+def test_hkcancor_verified_batch2_single_char_words(p, word, expected):
+    """v2.2.0 batch 2 — single-character 變調/slang nominal readings, kept
+    only where the bare standalone character has no common competing
+    verb/dominant-meaning reading (e.g. 帶/袋/橋 were rejected precisely
+    because they do — see data/tone_sandhi_words.tsv header)."""
+    assert p.convert(word) == expected
+    result = p.convert_candidates(word)[0]
+    assert result[3] == "certain"
+    assert result[4] == "hkcancor_verified"
+
+
+def test_hkcancor_verified_batch2_does_not_corrupt_compounds(p):
+    """Existing multi-char compounds already have their own correct entries
+    and must keep winning over the new single-char fallback entries via
+    longest-match segmentation."""
+    assert p.convert("光碟") == "gwong1 dip2"
+    assert p.convert("飛碟") == "fei1 dip2"
+    assert p.convert("影相") == "jing2 soeng2"
+    assert p.convert("相片") == "soeng3 pin2"
+    assert p.convert("排隊") == "paai4 deoi2"
+    assert p.convert("隊伍") == "deoi6 ng5"
+    assert p.convert("股份") == "gu2 fan2"
+    assert p.convert("朋友") == "pang4 jau5"
+    assert p.convert("計劃") == "gai3 waak6"
+    assert p.convert("麻雀") == "maa4 zoek2"
+    assert p.convert("孔雀") == "hung2 zoek2"
+
+
+def test_hkcancor_verified_batch2_rejected_verb_forms_unaffected(p):
+    """帶/袋 were rejected from the single-char batch because the bare
+    standalone character is at least as often the citation-tone VERB
+    ("to bring" / "to pocket") as the noun HKCanCor flagged — a word-level
+    entry can't distinguish syntactic function, so these must stay at
+    citation tone. 橋 was rejected because bare 橋 overwhelmingly means
+    "bridge" (kiu4); the kiu2 slang sense only appears in compounds like 度橋."""
+    assert p.convert("你帶咗遮未") == "nei5 daai3 zo2 ze1 mei6"
+    assert p.convert("袋定啲錢喺度") == "doi6 ding6 di1 cin2 hai2 dou6"
+    assert p.convert("度橋") == "dok6 kiu2"
+    assert p.convert("橋樑") == "kiu4 loeng4"
+    assert p.convert("橋") == "kiu4"
+
+
+def test_oral_hk_zoek_zai_tone_fix(p):
+    """雀仔 already had its own rime-cantonese entry at the citation tone
+    (zoek3 zai2); HKCanCor shows zoek2 zai2 (same colloquial 'zoek2' reading
+    as 麻雀/孔雀). This is an existing-wrong-entry fix like 麻雀/老豆, so it
+    lives in data/oral_hk.tsv rather than tone_sandhi_words.tsv."""
+    assert p.convert("雀仔") == "zoek2 zai2"
+    assert p.convert_candidates("雀仔")[0][4] == "oral_hk"
 
 
 # ── Batch ─────────────────────────────────────────────────────────────────
