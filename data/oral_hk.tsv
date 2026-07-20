@@ -65,3 +65,11 @@
 囁	zip3
 嗡	ung1
 唞	tau2
+# ── Multi-char phrase fixes (HKCanCor corpus tone-mining spike, 2026-07-20) ──
+# rime-cantonese lists 麻雀 as a rime tie (maa4 zoek2 / maa4 zoek3) and
+# ToJyutping's own ranking resolves it to zoek3 (citation/"sparrow" tone);
+# HKCanCor's transcribed speech shows zoek2 (mahjong) is the actual usage.
+# 老豆 ("dad", slang): both rime-cantonese and ToJyutping only have the
+# citation reading dau6; HKCanCor shows dau2 in every colloquial occurrence.
+麻雀	maa4 zoek2
+老豆	lou5 dau2
