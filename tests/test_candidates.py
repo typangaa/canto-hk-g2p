@@ -10,14 +10,20 @@ exact token (or, for an out-of-vocabulary single character, that character).
 Since v2.0.0, each result also carries a categorical `confidence` tag
 ("certain" / "ranked" / "tied" — issue #12) and a `source` tag naming which
 data layer produced the rank-0 reading ("rime" / "tojyutping" /
-"tojyutping_tiebreak" / "oral_hk" / "variant_alias" / "unihan" / "user_dict" /
-"passthrough" / "char_fallback" / "unresolved" / "unknown" — issue #13). No
-numeric probability is exposed by design — see CHANGELOG for the research
-behind this categorical-only design.
+"tojyutping_tiebreak" / "oral_hk" / "variant_alias" / "hkcancor_verified" /
+"unihan" / "user_dict" / "passthrough" / "char_fallback" / "unresolved" /
+"unknown" — issue #13). No numeric probability is exposed by design — see
+CHANGELOG for the research behind this categorical-only design.
 
 `"variant_alias"` (v2.1.0) is a distinct source from `"oral_hk"`: it marks a
 借音字 (phonetic-loan miswriting, e.g. 訓覺 for 瞓覺) resolved by copying the
 correctly-spelled canonical word's reading — see data/variant_words.tsv.
+
+`"hkcancor_verified"` (v2.2.0) marks a 變調 (changed-tone) word-level
+override: the word's real spoken tone (found by diffing HKCanCor's
+transcribed corpus against citation-tone output, then confirmed by a native
+speaker) differs from what the citation-tone character fallback would
+produce — see data/tone_sandhi_words.tsv.
 
 Run from repo root:  pytest tests/ -v
 """
@@ -33,7 +39,8 @@ def p():
 VALID_CONFIDENCE = {"certain", "ranked", "tied"}
 VALID_SOURCE = {
     "rime", "tojyutping", "tojyutping_tiebreak", "oral_hk", "variant_alias",
-    "unihan", "user_dict", "passthrough", "char_fallback", "unresolved", "unknown",
+    "hkcancor_verified", "unihan", "user_dict", "passthrough", "char_fallback",
+    "unresolved", "unknown",
 }
 
 
@@ -262,6 +269,36 @@ def test_variant_alias_no_segmentation_collision_with_longer_words(p):
     Regression guard — 個度數 must keep splitting as 個 + 度數."""
     assert p.convert("個度數") == "go3 dou6 sou3"
     assert p.convert("支吾其詞") == "zi1 ng4 kei4 ci4"
+
+
+@pytest.mark.parametrize("word,expected", [
+    ("今年", "gam1 nin2"),
+    ("紅籌", "hung4 cau2"),
+    ("藍籌", "laam4 cau2"),
+    ("新聞", "san1 man2"),
+    ("無喇喇", "mou4 laa1 laa1"),
+    ("之類", "zi1 leoi2"),
+])
+def test_hkcancor_verified_tone_sandhi_words(p, word, expected):
+    """v2.2.0 — HKCanCor-verified 變調 (changed-tone) word corrections
+    (data/tone_sandhi_words.tsv). Found by diffing HKCanCor's transcribed
+    corpus against citation-tone output; 新聞/之類 were also rime-cantonese
+    ties that the ToJyutping tie-break had resolved to the wrong side."""
+    assert p.convert(word) == expected
+    result = p.convert_candidates(word)[0]
+    assert result[3] == "certain"
+    assert result[4] == "hkcancor_verified"
+
+
+def test_hkcancor_verified_does_not_corrupt_native_reading(p):
+    """The characters behind the tone_sandhi_words entries keep their own
+    citation reading in unrelated compounds — these are word-level overrides,
+    never char-level."""
+    assert p.convert("年尾") == "nin4 mei5"
+    assert p.convert("聞名") == "man4 ming4"
+    assert p.convert("種類") == "zung2 leoi6"
+    assert p.convert("籌備") == "cau4 bei6"
+    assert p.convert("喇叭") == "laa3 baa1"
 
 
 # ── Batch ─────────────────────────────────────────────────────────────────

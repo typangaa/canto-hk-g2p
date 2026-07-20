@@ -31,6 +31,7 @@ RAW_DIR = DATA_DIR / "raw"
 
 ORAL_HK_TSV = DATA_DIR / "oral_hk.tsv"
 VARIANT_WORDS_TSV = DATA_DIR / "variant_words.tsv"
+TONE_SANDHI_WORDS_TSV = DATA_DIR / "tone_sandhi_words.tsv"
 
 RIME_FILES: List[Path] = [
     RAW_DIR / "rime-cantonese" / "jyut6ping3.chars.dict.yaml",
@@ -74,17 +75,17 @@ assert struct.calcsize(ENTRY_FMT) == 12, "Entry struct size mismatch"
 # Source parsers
 # ---------------------------------------------------------------------------
 
-def load_oral_hk(path: Path) -> Dict[str, str]:
+def load_oral_hk(path: Path, tag: str = "oral_hk") -> Dict[str, str]:
     """
-    Load oral_hk.tsv — highest-priority overrides.
-    Format:  char<TAB>jyutping
+    Load a TSV of highest-priority overrides (e.g. oral_hk.tsv,
+    tone_sandhi_words.tsv). Format:  word<TAB>jyutping
     Skips lines starting with '#' or blank lines.
     If a key appears multiple times, LAST entry wins (so later curations
     override earlier ones within the file — e.g. the two entries for 囉/㗎).
     """
     result: Dict[str, str] = {}
     if not path.exists():
-        print(f"[WARN] oral_hk.tsv not found: {path}", file=sys.stderr)
+        print(f"[WARN] {path.name} not found: {path}", file=sys.stderr)
         return result
 
     with open(path, encoding="utf-8") as fh:
@@ -94,13 +95,13 @@ def load_oral_hk(path: Path) -> Dict[str, str]:
                 continue
             parts = line.split("\t")
             if len(parts) < 2:
-                print(f"[WARN] oral_hk.tsv:{lineno}: bad line: {line!r}", file=sys.stderr)
+                print(f"[WARN] {path.name}:{lineno}: bad line: {line!r}", file=sys.stderr)
                 continue
             word, jyutping = parts[0].strip(), parts[1].strip()
             if word and jyutping:
                 result[word] = jyutping  # last occurrence wins
 
-    print(f"[oral_hk]   loaded {len(result):,} entries from {path.name}")
+    print(f"[{tag}]   loaded {len(result):,} entries from {path.name}")
     return result
 
 
@@ -631,6 +632,19 @@ def main() -> None:
         word_source[variant] = "variant_alias"
 
     # ------------------------------------------------------------------
+    # Step 4c: Resolve tone_sandhi_words.tsv (變調, HKCanCor-verified, v2.2.0)
+    #   Highest priority — word-level only (never touches char_entries):
+    #   these words' correct spoken tone differs from the citation tone our
+    #   char fallback would produce, but the underlying characters are
+    #   polysemous enough elsewhere that a char-level override would be
+    #   wrong (e.g. 年/籌/聞/類 keep their citation reading in other words).
+    # ------------------------------------------------------------------
+    tone_sandhi_dict = load_oral_hk(TONE_SANDHI_WORDS_TSV, tag="tone_sandhi")
+    for word, jyutping in tone_sandhi_dict.items():
+        word_entries[word] = jyutping
+        word_source[word] = "hkcancor_verified"
+
+    # ------------------------------------------------------------------
     # Step 5: Build char_entries (single chars only)
     #   Priority: oral > tojyutping_chars > rime_chars > unihan
     #   Apply in ascending priority so higher-priority layers overwrite.
@@ -658,14 +672,14 @@ def main() -> None:
 
     # ------------------------------------------------------------------
     # Step 5b: Build Candidates API sidecars (Phase 7b-2) — sparse, only
-    #   keys with 2+ distinct known readings. oral_hk entries are excluded
-    #   entirely: a hand-curated override is a final decision, not ambiguity
-    #   to surface.
+    #   keys with 2+ distinct known readings. oral_hk/variant_alias/
+    #   tone_sandhi entries are excluded entirely: a hand-curated override
+    #   is a final decision, not ambiguity to surface.
     # ------------------------------------------------------------------
     word_candidates, word_candidates_confidence = build_candidates(
         word_entries, rime_readings, tojyutping_candidates
     )
-    for word in oral_dict:
+    for word in list(oral_dict) + list(tone_sandhi_dict):
         word_candidates.pop(word, None)
         word_candidates_confidence.pop(word, None)
 
@@ -747,6 +761,7 @@ def main() -> None:
     print()
     print(f"  oral_hk entries          : {len(oral_dict):,}")
     print(f"  variant_words (aliases)  : {len(variant_dict):,}")
+    print(f"  tone_sandhi_words        : {len(tone_sandhi_dict):,}")
     print(f"  rime-cantonese (all)     : {len(rime_all):,}")
     print(f"  rime-cantonese (chars)   : {len(rime_chars):,}")
     print(f"  tojyutping (all)         : {len(tojyutping_all):,}")

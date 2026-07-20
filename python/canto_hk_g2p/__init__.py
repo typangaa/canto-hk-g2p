@@ -234,6 +234,12 @@ class Pipeline:
         - ``"variant_alias"``: a 借音字 (phonetic-loan miswriting, e.g. 訓覺
           for 瞓覺) resolved by copying the correctly-spelled canonical
           word's reading (`data/variant_words.tsv`, v2.1.0).
+        - ``"hkcancor_verified"``: a 變調 (changed-tone) word-level override
+          whose spoken tone was found to differ from the citation tone via
+          diffing HKCanCor's transcribed corpus against the citation
+          reading, then confirmed by a native speaker (`data/tone_sandhi_words.tsv`,
+          v2.2.0). Word-level only — the underlying characters keep their
+          citation reading in other, unrelated compounds.
         - ``"unihan"``: Unihan ``kCantonese`` char-only fallback.
         - ``"user_dict"``: caller-supplied runtime override.
         - ``"passthrough"``: non-CJK token (English, punctuation, digits).

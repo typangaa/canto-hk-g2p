@@ -1,0 +1,25 @@
+# HKCanCor-verified changed-tone (變調) word corrections for canto-g2p
+# Format: word<TAB>jyutping
+# License: Apache-2.0 (canto-g2p project, hand-curated)
+#
+# Methodology: HKCanCor (CC-BY, real spoken-transcript corpus) jyutping was
+# diffed against canto-hk-g2p's single-character citation-tone output to
+# surface words whose actual spoken tone differs from the citation form.
+# Candidates were cross-checked against the raw rime-cantonese/ToJyutping
+# data (several of these are rime ties that our ToJyutping tie-break
+# resolved to the wrong side, e.g. 麻雀/新聞/之類) and confirmed by a native
+# speaker before being added here. WORD-LEVEL ONLY — these characters are
+# highly polysemous standalone (e.g. 年/籌/聞/類 have other valid citation
+# readings in other compounds), so entries here must never propagate to
+# char_entries; see scripts/build_dict.py Step 4c.
+#
+# Rejected from this batch (2026-07-20 review): 靚仔/靚妹 (leng1) — likely
+# reflects 𡃁仔, a distinct colloquial word/character conflated in the source
+# transcription, not a genuine changed-tone reading of 靚; 紐西蘭 (nau5) —
+# unconfirmed, may be a corpus transcription quirk rather than real usage.
+今年	gam1 nin2
+紅籌	hung4 cau2
+藍籌	laam4 cau2
+新聞	san1 man2
+無喇喇	mou4 laa1 laa1
+之類	zi1 leoi2
