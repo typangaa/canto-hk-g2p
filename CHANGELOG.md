@@ -4,6 +4,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] — 2026-07-20
+
+### Added — HKCanCor-verified 變調 (changed-tone) word corrections
+
+Investigated whether canto-hk-g2p should handle Cantonese changed tone
+(變調 — a lexically/morphologically conditioned tone shift, e.g. noun/verb
+pairs like 袋(verb daai6)/袋(noun doi2)-style alternations, unlike Mandarin's
+phonologically regular sandhi). No comprehensive permissively-licensed
+changed-tone lexicon exists (the two most complete resources, words.hk and
+CC-Canto, are both license-excluded per this project's data policy), so a
+corpus-diff mining approach was used instead: HKCanCor (CC-BY, ~170k words of
+real spoken-transcript jyutping, via `pycantonese.hkcancor()`) was diffed
+against canto-hk-g2p's citation-tone output to surface characters whose
+actual spoken tone differs from the citation form. Each candidate was then
+cross-checked against the raw rime-cantonese/ToJyutping data and, critically,
+tested against realistic sentences to rule out standalone verb/noun or
+polysemy collisions before being confirmed by a native speaker.
+
+- **`data/tone_sandhi_words.tsv`** (new, Apache-2.0, hand-curated):
+  word-level-only overrides — never propagated to `char_entries`, since the
+  underlying characters remain highly polysemous in other compounds (e.g.
+  年/籌/聞/類/相/計/友 all keep their citation reading elsewhere). 13 entries
+  across two batches:
+  - Multi-char: `今年→gam1 nin2`, `紅籌→hung4 cau2`, `藍籌→laam4 cau2`,
+    `新聞→san1 man2` (a rime-cantonese tie ToJyutping's tie-break had
+    resolved to the wrong side), `無喇喇→mou4 laa1 laa1`,
+    `之類→zi1 leoi2` (also a mis-resolved tie).
+  - Single-char: `碟→dip2`, `相→soeng2`, `隊→deoi2`, `份→fan2`, `友→jau2`,
+    `計→gai2`, `雀→zoek2` — kept only where the bare standalone character has
+    no common competing verb/dominant-meaning reading. Rejected candidates
+    (with sentence-level evidence) include 帶/袋 (a common standalone VERB
+    sense — "你帶咗遮未"/"袋定啲錢" — at least as frequent as the noun sense
+    HKCanCor flagged), 橋 (bare 橋 overwhelmingly means "bridge"; the "idea"
+    slang sense only occurs in compounds like 度橋), and similarly 魚/人/房/
+    排/晾/啄/散, each of which has a common bare-word meaning that already
+    matches the citation tone.
+- **`data/oral_hk.tsv`**: three existing-entry tone fixes discovered during
+  the same mining pass — `麻雀→maa4 zoek2` (mahjong; both rime-cantonese's
+  tie and ToJyutping's own ranking independently resolved to the wrong,
+  citation "sparrow" reading), `老豆→lou5 dau2` ("dad" slang; both upstream
+  sources only had the citation reading), `雀仔→zoek2 zai2` (same class as
+  麻雀 — rime-cantonese's only entry was the citation reading).
+- New source tag: **`"hkcancor_verified"`** — additive to the `source` field
+  from #13, marking a changed-tone word-level override found via this
+  corpus-diff methodology.
+- 17 new tests covering both batches, including explicit regression guards
+  proving the rejected candidates (帶/袋/橋/etc.) are unaffected and that
+  existing multi-char compounds (光碟/影相/排隊/朋友/計劃/麻雀/孔雀 etc.)
+  keep winning over the new single-char fallback entries via longest-match
+  segmentation.
+
+**Not pursued**: two marginal candidates surfaced during review — `靚仔`/
+`靚妹→leng1` (likely reflects 𡃁仔, a distinct colloquial word/character
+conflated in the source transcription, not genuine 變調 of 靚) and
+`紐西蘭→nau5` (unconfirmed, may be a transcription quirk) — were excluded
+after native-speaker review. The three highest-count deviations in the full
+307-candidate review queue — 返 (faan2→faan1), 邊 (bin1→bin6), and 上
+(soeng6→soeng5) — were also left unaddressed: each spans a large family of
+distinct compounds/grammatical functions that a simple word-level TSV entry
+can't safely resolve; a future feature would need per-compound or
+part-of-speech-aware handling.
+
 ## [2.1.0] — 2026-07-19
 
 ### Added — 借音字 (phonetic-loan) alias layer

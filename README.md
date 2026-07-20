@@ -285,7 +285,7 @@ their batch siblings) carries two trailing fields:
 | Field | Type | Values |
 |---|---|---|
 | `confidence` | `str` | `"certain"` (no ambiguity), `"ranked"` (2+ candidates ordered by ToJyutping's own context-aware ranking — a real preference signal), `"tied"` (2+ candidates, but the order is rime-cantonese's raw arbitrary tie-break — no real preference signal; also the default when an ambiguous token has no entry in the bundled confidence data) |
-| `source` | `str` | Which data layer produced the rank-0 reading: `"rime"`, `"tojyutping"` (exact trie hit), `"tojyutping_tiebreak"` (rime tie resolved via ToJyutping's context segmentation, v1.7.1), `"oral_hk"` (hand-curated override), `"variant_alias"` (借音字 phonetic-loan miswriting resolved to its canonical word's reading, v2.1.0), `"unihan"` (char-only fallback), `"user_dict"` (caller override), `"passthrough"` (non-CJK), `"char_fallback"` (OOV multi-char token — architecturally unreachable via real segmenter output), `"unresolved"` (truly unknown char), or `"unknown"` (source sidecar missing/no entry) |
+| `source` | `str` | Which data layer produced the rank-0 reading: `"rime"`, `"tojyutping"` (exact trie hit), `"tojyutping_tiebreak"` (rime tie resolved via ToJyutping's context segmentation, v1.7.1), `"oral_hk"` (hand-curated override), `"variant_alias"` (借音字 phonetic-loan miswriting resolved to its canonical word's reading, v2.1.0), `"hkcancor_verified"` (變調 changed-tone word-level correction found by diffing the HKCanCor corpus against citation-tone output, v2.2.0), `"unihan"` (char-only fallback), `"user_dict"` (caller override), `"passthrough"` (non-CJK), `"char_fallback"` (OOV multi-char token — architecturally unreachable via real segmenter output), `"unresolved"` (truly unknown char), or `"unknown"` (source sidecar missing/no entry) |
 
 **No numeric probability is exposed, by design.** Neither ToJyutping's trie
 nor rime-cantonese's tied readings carry real frequency data — a float score
@@ -450,8 +450,9 @@ p.convert_candidates_batch(["正經", "香港銀行"])
 |---|---|---|
 | [rime-cantonese](https://github.com/rime/rime-cantonese) `jyut6ping3.dict/.chars/.words` | CC-BY-4.0 | Primary lexicon (~100k entries); attribution required — see `NOTICE` |
 | [Unihan `kCantonese`](https://unicode.org/charts/unihan.html) | Unicode License v3 (MIT-equivalent) | Rare-character fallback (~20k chars) |
-| `data/oral_hk.tsv` (hand-curated) | Apache-2.0 | ~60 HK colloquial characters: 嘅 喺 咗 哋 噉 㗎 囉 喎 … |
+| `data/oral_hk.tsv` (hand-curated) | Apache-2.0 | ~60 HK colloquial characters (嘅 喺 咗 哋 噉 㗎 囉 喎 …) plus a few existing-entry tone fixes: 麻雀, 老豆, 雀仔 |
 | `data/variant_words.tsv` (hand-curated) | Apache-2.0 | 借音字 phonetic-loan aliases (17 entries): 訓覺→瞓覺, 岩岩→啱啱, 果度→嗰度, 緊係→梗係, 吾該→唔該 … |
+| `data/tone_sandhi_words.tsv` (hand-curated) | Apache-2.0 | 變調 (changed-tone) word-level corrections (13 entries), found via HKCanCor corpus-diff mining: 今年→gam1 nin2, 碟→dip2, 相→soeng2 … |
 | [CMU Pronouncing Dictionary](https://github.com/cmusphinx/cmudict) | BSD-2-Clause | English → IPA via ARPAbet mapping (~134k entries); used by `convert_ipa()` |
 
 ### Excluded (license-incompatible)
@@ -507,7 +508,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 159 Rust unit tests + 318 Python integration tests (477 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` / `convert_detailed_batch()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the Candidates API (`convert_candidates()` / `convert_candidates_batch()`) including its `confidence` and `source` tags.
+All 159 Rust unit tests + 335 Python integration tests (494 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` / `convert_detailed_batch()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the Candidates API (`convert_candidates()` / `convert_candidates_batch()`) including its `confidence` and `source` tags.
 
 ---
 
