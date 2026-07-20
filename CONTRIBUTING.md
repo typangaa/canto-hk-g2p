@@ -34,15 +34,15 @@ maturin develop --release
 ## Running tests
 
 ```bash
-# Rust unit tests (115 tests)
+# Rust unit tests (159 tests)
 cargo test
 
-# Python integration tests (113 tests)
+# Python integration tests (318 tests)
 uv run --group dev pytest tests/ -v
 # or: python3 -m pytest tests/ -v
 ```
 
-All 228 tests must pass before submitting a pull request.
+All 477 tests must pass before submitting a pull request.
 
 ## Project structure
 
@@ -59,6 +59,7 @@ python/canto_hk_g2p/
   data/             — generated binary dicts (gitignored, bundled in wheel)
 data/
   oral_hk.tsv       — hand-curated HK colloquial char/phrase overrides
+  variant_words.tsv — 借音字 (phonetic-loan) aliases: miswriting → canonical word
   raw/              — downloaded source data (gitignored)
 scripts/
   fetch_data.py     — download rime-cantonese + Unihan (pinned versions)
@@ -72,7 +73,39 @@ Edit `data/oral_hk.tsv` (tab-separated: `word<TAB>jyutping`). Supports both sing
 characters and multi-character phrases. This file has the highest priority and
 overrides rime-cantonese and Unihan.
 
-After editing, rebuild and reinstall:
+## Adding a 借音字 (phonetic-loan) alias
+
+If you find a common miswriting that borrows a homophone character's sound
+(e.g. 訓覺 for 瞓覺, 岩岩 for 啱啱) and produces the wrong reading, add a row to
+`data/variant_words.tsv`: `variant_spelling<TAB>canonical_spelling`. The
+canonical spelling must already resolve correctly (via rime-cantonese,
+ToJyutping, or `oral_hk.tsv`) — `build_dict.py` copies its reading verbatim
+and tags the variant with `source="variant_alias"`.
+
+Do **not** add a case unless the canonical word's own reading is unambiguous
+in real usage — e.g. 黎/嚟 was deliberately left out of the seed list because
+both `lai4` and `lei4` are attested standard readings for 嚟 itself, so there
+is no single "correct" reading to alias to.
+
+Also check for **segmentation collisions** before adding a row: the variant
+spelling must not be a prefix of some other real dictionary word starting
+with the same character(s), or the longest-match segmenter will shadow that
+real word. `個度` (for 嗰度) was tried and rejected this way — it collides
+with `度數` inside `個度數` ("this reading/number"). Check with:
+
+```bash
+uv run python3 -c "
+import sys; sys.path.insert(0, 'scripts')
+from build_dict import load_tojyutping, load_rime_cantonese, RIME_FILES
+tojyutping_all, *_ = load_tojyutping()
+rime_all, *_ = load_rime_cantonese(RIME_FILES)
+prefix = '個度'  # the variant spelling you're about to add
+hits = [w for w in list(tojyutping_all) + list(rime_all) if w.startswith(prefix) and len(w) > len(prefix)]
+print(hits or 'no collision')
+"
+```
+
+After editing either file, rebuild and reinstall:
 
 ```bash
 uv run python scripts/build_dict.py

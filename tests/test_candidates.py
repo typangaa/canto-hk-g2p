@@ -10,10 +10,14 @@ exact token (or, for an out-of-vocabulary single character, that character).
 Since v2.0.0, each result also carries a categorical `confidence` tag
 ("certain" / "ranked" / "tied" — issue #12) and a `source` tag naming which
 data layer produced the rank-0 reading ("rime" / "tojyutping" /
-"tojyutping_tiebreak" / "oral_hk" / "unihan" / "user_dict" / "passthrough" /
-"char_fallback" / "unresolved" / "unknown" — issue #13). No numeric
-probability is exposed by design — see CHANGELOG for the research behind
-this categorical-only design.
+"tojyutping_tiebreak" / "oral_hk" / "variant_alias" / "unihan" / "user_dict" /
+"passthrough" / "char_fallback" / "unresolved" / "unknown" — issue #13). No
+numeric probability is exposed by design — see CHANGELOG for the research
+behind this categorical-only design.
+
+`"variant_alias"` (v2.1.0) is a distinct source from `"oral_hk"`: it marks a
+借音字 (phonetic-loan miswriting, e.g. 訓覺 for 瞓覺) resolved by copying the
+correctly-spelled canonical word's reading — see data/variant_words.tsv.
 
 Run from repo root:  pytest tests/ -v
 """
@@ -28,8 +32,8 @@ def p():
 
 VALID_CONFIDENCE = {"certain", "ranked", "tied"}
 VALID_SOURCE = {
-    "rime", "tojyutping", "tojyutping_tiebreak", "oral_hk", "unihan",
-    "user_dict", "passthrough", "char_fallback", "unresolved", "unknown",
+    "rime", "tojyutping", "tojyutping_tiebreak", "oral_hk", "variant_alias",
+    "unihan", "user_dict", "passthrough", "char_fallback", "unresolved", "unknown",
 }
 
 
@@ -200,6 +204,64 @@ def test_source_user_dict_for_override():
 
 def test_source_rime_for_plain_dict_hit(p):
     assert p.convert_candidates("香港")[0][4] == "rime"
+
+
+def test_source_variant_alias_for_phonetic_loan_word(p):
+    """訓覺 is a 借音字 miswriting of 瞓覺 (data/variant_words.tsv, v2.1.0)."""
+    result = p.convert_candidates("訓覺")
+    assert result[0][1] == ["fan3 gaau3"]
+    assert result[0][3] == "certain"
+    assert result[0][4] == "variant_alias"
+
+
+def test_variant_alias_does_not_corrupt_native_reading(p):
+    """訓 keeps its own genuine reading (fan3) in 教訓/訓練 — only the exact
+    借音字 word 訓覺 is affected, not the character 訓 in general."""
+    assert p.convert_candidates("教訓")[0][4] == "rime"
+    assert p.convert_candidates("訓練")[0][4] == "rime"
+
+
+def test_variant_alias_gan2_hai6_becomes_gang2_hai6(p):
+    """緊係 is a common miswriting of 梗係 ("of course")."""
+    assert p.convert("緊係") == "gang2 hai6"
+    assert p.convert_candidates("緊係")[0][4] == "variant_alias"
+    # 緊 keeps its own reading (gan2) in genuine words — 緊要/要緊 unaffected.
+    assert p.convert("緊要") == "gan2 jiu3"
+    assert p.convert("要緊") == "jiu3 gan2"
+
+
+@pytest.mark.parametrize("variant,canonical,expected", [
+    ("係度", "喺度", "hai2 dou6"),
+    ("念住", "諗住", "nam2 zyu6"),
+    ("林住", "諗住", "nam2 zyu6"),
+    ("禁掣", "撳掣", "gam6 zai3"),
+    ("㩒掣", "撳掣", "gam6 zai3"),
+    ("令女", "靚女", "leng3 neoi2"),
+    ("亂嗡", "亂噏", "lyun2 ap1"),
+    ("晒氣", "嘥氣", "saai1 hei3"),
+    ("甘樣", "噉樣", "gam2 joeng2"),
+    ("甘多", "咁多", "gam3 do1"),
+    ("吾該", "唔該", "m4 goi1"),
+    ("吾知", "唔知", "m4 zi1"),
+    ("吾好", "唔好", "m4 hou2"),
+])
+def test_variant_alias_expanded_seed_list(p, variant, canonical, expected):
+    """v2.1.0 expansion — corroborated by multiple independent research
+    passes, each verified individually against the pipeline (several
+    similarly-plausible candidates from the same research were rejected:
+    e.g. 個度→嗰度 for a real segmentation collision with 度數, and 既→嘅/
+    黎→嚟-style disputed-reading pairs)."""
+    assert p.convert(variant) == expected
+    assert p.convert(canonical) == expected
+    assert p.convert_candidates(variant)[0][4] == "variant_alias"
+
+
+def test_variant_alias_no_segmentation_collision_with_longer_words(p):
+    """個度 (for 嗰度) was considered and rejected: it would shadow 度數
+    inside 個度數 ("this reading/number") via longest-match segmentation.
+    Regression guard — 個度數 must keep splitting as 個 + 度數."""
+    assert p.convert("個度數") == "go3 dou6 sou3"
+    assert p.convert("支吾其詞") == "zi1 ng4 kei4 ci4"
 
 
 # ── Batch ─────────────────────────────────────────────────────────────────

@@ -47,7 +47,8 @@ The library is a standalone open-source deliverable — Cantonese TTS pre-proces
 - **Polyphone disambiguation** via longest-match word-level segmentation (~85% accuracy)
 - **`user_dict` runtime overrides** — `Pipeline(user_dict={"行": "hong4"})` locks a pronunciation above every bundled dictionary, and participates in segmentation so multi-char overrides aren't split apart
 - **`convert_candidates()`** / **`convert_candidates_batch()`** — Candidates API: rank-ordered alternate readings for polyphones (`正經` → `["zing3 ging1", "zing1 ging1"]`), instead of committing to a single one
-- **Confidence + source tags** — every structured result carries a categorical confidence tag (`"certain"` / `"ranked"` / `"tied"`) and a data-layer source tag (`"rime"` / `"tojyutping"` / `"oral_hk"` / `"unihan"` / `"user_dict"` / ...) per token
+- **Confidence + source tags** — every structured result carries a categorical confidence tag (`"certain"` / `"ranked"` / `"tied"`) and a data-layer source tag (`"rime"` / `"tojyutping"` / `"oral_hk"` / `"variant_alias"` / `"unihan"` / `"user_dict"` / ...) per token
+- **借音字 (phonetic-loan) correction** — common miswritings that borrow a homophone's sound (`訓覺` for `瞓覺`, `岩岩` for `啱啱`) resolve to the correctly-spelled word's reading instead of the variant character's own native reading (`data/variant_words.tsv`)
 - **Rayon parallel batch processing** — scales to large corpora
 - **Zero runtime Python dependencies** — pronunciation dictionaries bundled in the wheel
 - **`convert_detailed()`** / **`convert_detailed_batch()`** — structured `(token, jyutping, lang, confidence, source)` output
@@ -284,7 +285,7 @@ their batch siblings) carries two trailing fields:
 | Field | Type | Values |
 |---|---|---|
 | `confidence` | `str` | `"certain"` (no ambiguity), `"ranked"` (2+ candidates ordered by ToJyutping's own context-aware ranking — a real preference signal), `"tied"` (2+ candidates, but the order is rime-cantonese's raw arbitrary tie-break — no real preference signal; also the default when an ambiguous token has no entry in the bundled confidence data) |
-| `source` | `str` | Which data layer produced the rank-0 reading: `"rime"`, `"tojyutping"` (exact trie hit), `"tojyutping_tiebreak"` (rime tie resolved via ToJyutping's context segmentation, v1.7.1), `"oral_hk"` (hand-curated override), `"unihan"` (char-only fallback), `"user_dict"` (caller override), `"passthrough"` (non-CJK), `"char_fallback"` (OOV multi-char token — architecturally unreachable via real segmenter output), `"unresolved"` (truly unknown char), or `"unknown"` (source sidecar missing/no entry) |
+| `source` | `str` | Which data layer produced the rank-0 reading: `"rime"`, `"tojyutping"` (exact trie hit), `"tojyutping_tiebreak"` (rime tie resolved via ToJyutping's context segmentation, v1.7.1), `"oral_hk"` (hand-curated override), `"variant_alias"` (借音字 phonetic-loan miswriting resolved to its canonical word's reading, v2.1.0), `"unihan"` (char-only fallback), `"user_dict"` (caller override), `"passthrough"` (non-CJK), `"char_fallback"` (OOV multi-char token — architecturally unreachable via real segmenter output), `"unresolved"` (truly unknown char), or `"unknown"` (source sidecar missing/no entry) |
 
 **No numeric probability is exposed, by design.** Neither ToJyutping's trie
 nor rime-cantonese's tied readings carry real frequency data — a float score
@@ -419,6 +420,7 @@ p.convert_candidates_batch(["正經", "香港銀行"])
 ### Known limitations
 
 - **Residual polyphones**: Word-boundary segmentation resolves approximately 85% of polyphone cases. Single-character polyphones that cannot be disambiguated by context (e.g. 好 as `hou2` greeting vs. `hou3` adverb) fall back to the most-frequent reading in the dictionary.
+- **借音字 (phonetic-loan miswritings)**: a variant character borrowed purely for its sound (e.g. `訓` in `訓覺`, standing in for `瞓`) falls back to the *variant character's own native reading* unless the exact word is listed in `data/variant_words.tsv`. This is a curated, growing seed list (see `CONTRIBUTING.md`), not exhaustive — the set of such miswritings is open-ended and new ones surface over time.
 - **Fraction `十分之`**: Fractions with denominator 十 (e.g. `1/10`) output `fan1` instead of `fan6` because `十分之` is also a common adverb (十分之好 = "extremely good") — the adverb entry in rime-cantonese takes longest-match priority. Other denominators (1/2, 1/3, 3/4, 1/12 …) produce the correct `fan6` reading.
 - **Tone sandhi (變調)**: Citation tones only — tone sandhi is deferred to a future release.
 - **No neural polyphone tier**: The current segmentation-based approach covers most cases. A BERT-based polyphone layer (trainable on HKCanCor CC-BY) is on the roadmap but not included in v1.
@@ -449,6 +451,7 @@ p.convert_candidates_batch(["正經", "香港銀行"])
 | [rime-cantonese](https://github.com/rime/rime-cantonese) `jyut6ping3.dict/.chars/.words` | CC-BY-4.0 | Primary lexicon (~100k entries); attribution required — see `NOTICE` |
 | [Unihan `kCantonese`](https://unicode.org/charts/unihan.html) | Unicode License v3 (MIT-equivalent) | Rare-character fallback (~20k chars) |
 | `data/oral_hk.tsv` (hand-curated) | Apache-2.0 | ~60 HK colloquial characters: 嘅 喺 咗 哋 噉 㗎 囉 喎 … |
+| `data/variant_words.tsv` (hand-curated) | Apache-2.0 | 借音字 phonetic-loan aliases (17 entries): 訓覺→瞓覺, 岩岩→啱啱, 果度→嗰度, 緊係→梗係, 吾該→唔該 … |
 | [CMU Pronouncing Dictionary](https://github.com/cmusphinx/cmudict) | BSD-2-Clause | English → IPA via ARPAbet mapping (~134k entries); used by `convert_ipa()` |
 
 ### Excluded (license-incompatible)
@@ -504,7 +507,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 159 Rust unit tests + 301 Python integration tests (460 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` / `convert_detailed_batch()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the Candidates API (`convert_candidates()` / `convert_candidates_batch()`) including its `confidence` and `source` tags.
+All 159 Rust unit tests + 318 Python integration tests (477 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` / `convert_detailed_batch()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the Candidates API (`convert_candidates()` / `convert_candidates_batch()`) including its `confidence` and `source` tags.
 
 ---
 
@@ -515,6 +518,7 @@ Contributions are welcome. Please open an issue before starting significant work
 A few areas where help is particularly valuable:
 
 - Expanding `data/oral_hk.tsv` with additional colloquial characters
+- Expanding `data/variant_words.tsv` with additional 借音字 (phonetic-loan) aliases
 - Unit abbreviation expansion (`km`, `°C`, `kg` → Cantonese spoken form)
 - Improving number normalization edge cases
 - Adding tone sandhi rules (future release)

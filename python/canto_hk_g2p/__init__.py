@@ -231,6 +231,9 @@ class Pipeline:
         - ``"tojyutping_tiebreak"``: a rime-cantonese arbitrary tie resolved
           via ToJyutping's context-aware segmentation (v1.7.1).
         - ``"oral_hk"``: hand-curated HK colloquial override.
+        - ``"variant_alias"``: a 借音字 (phonetic-loan miswriting, e.g. 訓覺
+          for 瞓覺) resolved by copying the correctly-spelled canonical
+          word's reading (`data/variant_words.tsv`, v2.1.0).
         - ``"unihan"``: Unihan ``kCantonese`` char-only fallback.
         - ``"user_dict"``: caller-supplied runtime override.
         - ``"passthrough"``: non-CJK token (English, punctuation, digits).

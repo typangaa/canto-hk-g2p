@@ -4,6 +4,148 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] — 2026-07-19
+
+### Added — 借音字 (phonetic-loan) alias layer
+
+Investigation triggered by a user report that `訓覺` (a common miswriting of
+`瞓覺`, "to sleep") resolved to `fan3 gok3` instead of `fan3 gaau3`. Root
+cause: `訓` genuinely reads `fan3` on its own (教訓, 訓練) — nothing wrong
+there — but when the *specific word* `訓覺` borrows `瞓`'s sound, char-level
+fallback has no way to know that and returns `訓`'s own native reading
+instead. This is a distinct linguistic category from 多音字 (a character with
+several legitimate readings, resolved via word-level segmentation, ~85%
+coverage) and from 異體字 (true orthographic variants, e.g. 裡/裏, which share
+the same reading and therefore carry no risk at all).
+
+A systematic sample of 31 words across all three categories (多音字/借音字/
+異體字) confirmed the 借音字 pattern was structural, not a one-off: 4/6
+sampled 借音字 words produced a wrong reading via char fallback, while every
+多音字 and 異體字 sample the tool got right (several initial "failures" in
+that sample turned out to be the reporter's own mistaken expected values,
+corrected after verification — e.g. 重複 is genuinely `cung4 fuk1`, not
+`fuk6`).
+
+- **`data/variant_words.tsv`** (new, Apache-2.0, hand-curated): maps a
+  borrowed-sound miswriting to its correctly-spelled canonical word
+  (`variant_spelling<TAB>canonical_spelling`). `build_dict.py` resolves each
+  alias at build time by copying the canonical word's already-resolved
+  reading verbatim — the alias can never drift out of sync with upstream
+  data, since it's not a separately hand-typed jyutping string.
+  - Seed entries: `訓覺→瞓覺`, `岩岩→啱啱`, `果度→嗰度`, `緊係→梗係` (the last
+    three independently corroborated by public sources documenting these as
+    common convenience miswritings on HK forums, e.g. LIHKG).
+  - `黎`/`嚟` (a very common substitution, e.g. `過黎` for `過嚟`) was
+    deliberately **not** added: research showed `嚟` itself has two attested
+    standard readings (`lai4` and `lei4`), so there is no single unambiguous
+    canonical reading to alias to. Documented in `CONTRIBUTING.md` as the
+    bar for adding a case — the canonical word's own reading must be
+    unambiguous in real usage.
+- New source tag: **`"variant_alias"`** — additive to the `source` field
+  from #13, not a breaking change (no existing tuple shape changes; it's a
+  new possible string value). Distinguishes "this reading was corrected from
+  a known miswriting" from `"oral_hk"` ("this is a genuine hand-curated
+  colloquial particle").
+- Deliberately **not** built as a general character-level substitution rule
+  (`訓`→`瞓` everywhere): that would corrupt `訓` in `教訓`/`訓練`, where it
+  has its own genuine, unrelated reading. The alias table only ever matches
+  at the exact word boundary the segmenter already uses.
+- Considered scraping words.hk (粵典) for a comprehensive list — rejected:
+  its license is restricted-redistribution (excluded per project policy).
+  Seed list is hand-compiled from public linguistic knowledge instead, same
+  practice as the existing `oral_hk.tsv`. A systematic sweep against
+  HKCanCor (CC-BY, human-annotated jyutping corpus, already an approved
+  future data source) was proposed as the path to comprehensive coverage
+  but deferred — not yet implemented.
+- Also surfaced, out of scope for this release: `有D` (Latin letter `D`
+  standing in for `啲`) — a different substitution category (Latin letter
+  for a Cantonese word, not a Chinese-character variant) that the current
+  English-passthrough design doesn't address.
+
+**Follow-up expansion search #1** (manual, single-model): cross-checked ~20
+further candidate substitutions against public sources and the pipeline
+directly. Only one more confirmed, unambiguous case survived: `緊係→梗係`
+("of course"; currently misread as `gan2 hai6` instead of `gang2 hai6`).
+Rejected candidates and why:
+- `响度`/`响處` (借 響 for 喺): `响度` already has a legitimate, arguably more
+  common meaning ("loudness", acoustics term, `hoeng2 dou6`) — aliasing it
+  to `喺度` would corrupt that real word. Genuine polysemy, not a clean
+  substitution.
+- `既` for `嘅`: same problem as `黎`/`嚟` — `既` is the *original* borrowed
+  character `嘅` was created from (adding the mouth radical); which form is
+  "correct" is itself an open community debate, not a resolved fact.
+- `加左`/`睇左`/`求奇`/`使乜`: already produce the correct reading today,
+  either via an existing word-level dict entry or because the ambiguous
+  character's rank-0 candidate already happens to be the right one — no
+  fix needed.
+
+**Follow-up expansion search #2** (multi-agent, via `weir chat agy-gemini` ×4
+in parallel — general web research, academic/dictionary sources, HK forum
+discussion threads, and a targeted list of colloquial particles). Combined
+output claimed ~75 candidates across the 4 agents; most were unreliable on
+inspection (one agent's own table mapped `既→嘅` and `既→㗎` in adjacent rows,
+contradicting itself; several claimed pairs — `貢`/`噉`, `茅`/`冇`, `挽`/`玩`,
+`巧`/`好` — are phonetically too distant to be plausible sound-borrows and
+read as fabricated). Every surviving candidate was independently checked
+against the pipeline for a real reading divergence, checked against
+`word_entries` for **segmentation collisions** (a longer real word sharing
+the same prefix), and cross-checked with `WebSearch` where corroboration was
+thin. **13 new confirmed entries** survived this filter:
+`係度→喺度`, `念住→諗住`, `林住→諗住`, `禁掣→撳掣`, `㩒掣→撳掣`, `令女→靚女`,
+`亂嗡→亂噏`, `晒氣→嘥氣`, `甘樣→噉樣`, `甘多→咁多`, `吾該→唔該`, `吾知→唔知`,
+`吾好→唔好`. (`制掣→撳掣` was swapped for `㩒掣→撳掣` after further review: `㩒`
+turned out to already resolve correctly on its own via rime-cantonese — `㩒`
+and `撳` are true 異體字 for the same `gam6` reading, not a divergent-reading
+pair, so this row is a source-tag reclassification rather than a correctness
+fix. `制掣`, by contrast, genuinely mis-resolves — `zai3 zai3` instead of
+`gam6 zai3` — but was dropped in favor of `㩒掣` per this same review.)
+
+Notable rejections from this pass:
+- **`個度→嗰度`**: initially added, then caught by a segmentation-collision
+  check and removed — `個度` (2 chars) shadows the real word `度數` inside
+  `個度數` ("this reading/number"), turning it into `個度`+`數` instead of
+  `個`+`度數`. This is a new failure mode distinct from the "disputed
+  canonical reading" rejections seen so far, and is now documented as a
+  required check in `CONTRIBUTING.md` and `data/variant_words.tsv`'s header.
+- **`個個→嗰個`**: rejected — `個個` already has its own common, correct,
+  unrelated meaning ("everyone", `go3 go3`); aliasing would corrupt it.
+- **`親你→襯你`** (借 親 for 襯, e.g. "呢件衫好親你" for "...好襯你"):
+  linguistically well-motivated (親 only grammatically follows a verb, e.g.
+  嚇親/撞親; 襯 means "to match/suit") and a real divergence (`can1` vs
+  `can3`), but rejected on an **architecture mismatch**: `襯你` doesn't
+  independently exist as a word_entries key (it's two separately-resolved
+  single characters, not a fixed lexicalized compound), so there is no
+  canonical target for the alias mechanism to copy from without inventing
+  a fake dictionary word. A single-character `親→襯` alias was also
+  rejected — `親` has its own genuine `can1` reading in `親人`/`父親`/`親愛`
+  that a blanket alias would corrupt.
+- **`吾`→`唔` as a single-character alias** (rather than the three specific
+  compounds actually added) was considered — all three research passes
+  flagged this substitution heavily as a well-known "5P字" — but rejected
+  in favor of the narrower, already-established policy of word-boundary-only
+  aliases (see the `訓`/`訓覺` precedent in the `variant_alias` design
+  above): a blanket single-char rule carries meaningfully higher blast
+  radius per row than enumerating specific compounds, for one row saved.
+- **`尼度→呢度`**: only one research pass flagged this, and a targeted
+  follow-up `WebSearch` found no independent corroboration — left out for
+  insufficient evidence, same bar applied to `黎`/`嚟` and `响度`.
+
+This reinforces the CHANGELOG's earlier point: comprehensive coverage needs
+the proposed HKCanCor corpus-driven sweep, not further one-by-one guessing —
+and multi-agent research fan-out finds more raw candidates faster, but does
+not reduce the need for the same per-candidate verification rigor (pipeline
+divergence check + collision check + corroboration bar).
+
+### Internal
+
+- `word_source.bin` entry count: 141,818 → 141,835 (+17 `variant_alias`
+  entries total; no new `.bin` file, no `pyproject.toml` packaging change
+  needed).
+- Rust: 159 tests (unchanged, no new Rust logic — resolution is build-time
+  Python). Python: 318 tests (+17 over v2.0.0's 301: 3 from the first
+  expansion pass, 14 from the multi-agent expansion — 13 parametrized cases
+  + 1 segmentation-collision regression guard for `個度數`).
+
 ## [2.0.0] — 2026-07-19
 
 ### Breaking changes — Migration guide

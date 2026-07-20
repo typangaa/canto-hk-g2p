@@ -30,6 +30,7 @@ DATA_DIR = REPO_ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
 
 ORAL_HK_TSV = DATA_DIR / "oral_hk.tsv"
+VARIANT_WORDS_TSV = DATA_DIR / "variant_words.tsv"
 
 RIME_FILES: List[Path] = [
     RAW_DIR / "rime-cantonese" / "jyut6ping3.chars.dict.yaml",
@@ -100,6 +101,37 @@ def load_oral_hk(path: Path) -> Dict[str, str]:
                 result[word] = jyutping  # last occurrence wins
 
     print(f"[oral_hk]   loaded {len(result):,} entries from {path.name}")
+    return result
+
+
+def load_variant_words(path: Path) -> Dict[str, str]:
+    """
+    Load variant_words.tsv — 借音字 (phonetic-loan) alias overrides.
+    Format:  variant_spelling<TAB>canonical_spelling
+    Skips lines starting with '#' or blank lines.
+    Resolution (copying the canonical spelling's jyutping) happens in main(),
+    after word_entries is fully built, since the canonical spelling must
+    already be resolved.
+    """
+    result: Dict[str, str] = {}
+    if not path.exists():
+        print(f"[WARN] variant_words.tsv not found: {path}", file=sys.stderr)
+        return result
+
+    with open(path, encoding="utf-8") as fh:
+        for lineno, raw in enumerate(fh, 1):
+            line = raw.rstrip("\n\r")
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 2:
+                print(f"[WARN] variant_words.tsv:{lineno}: bad line: {line!r}", file=sys.stderr)
+                continue
+            variant, canonical = parts[0].strip(), parts[1].strip()
+            if variant and canonical:
+                result[variant] = canonical
+
+    print(f"[variant]   loaded {len(result):,} entries from {path.name}")
     return result
 
 
@@ -582,6 +614,23 @@ def main() -> None:
         word_source[w] = "oral_hk"
 
     # ------------------------------------------------------------------
+    # Step 4b: Resolve variant_words.tsv aliases (借音字, v2.1.0)
+    #   Highest priority — corrects char-fallback readings for common
+    #   phonetic-loan miswritings. Copies the canonical spelling's already-
+    #   resolved jyutping verbatim, so it never drifts out of sync.
+    # ------------------------------------------------------------------
+    variant_dict = load_variant_words(VARIANT_WORDS_TSV)
+    for variant, canonical in variant_dict.items():
+        if canonical not in word_entries:
+            raise SystemExit(
+                f"[ERROR] variant_words.tsv: canonical spelling {canonical!r} "
+                f"(for variant {variant!r}) not found in word_entries — "
+                f"it must already resolve via rime/tojyutping/oral_hk"
+            )
+        word_entries[variant] = word_entries[canonical]
+        word_source[variant] = "variant_alias"
+
+    # ------------------------------------------------------------------
     # Step 5: Build char_entries (single chars only)
     #   Priority: oral > tojyutping_chars > rime_chars > unihan
     #   Apply in ascending priority so higher-priority layers overwrite.
@@ -697,6 +746,7 @@ def main() -> None:
     print(f"  total               :                     {total:>10,} bytes  ({total / 1024:.1f} KiB)")
     print()
     print(f"  oral_hk entries          : {len(oral_dict):,}")
+    print(f"  variant_words (aliases)  : {len(variant_dict):,}")
     print(f"  rime-cantonese (all)     : {len(rime_all):,}")
     print(f"  rime-cantonese (chars)   : {len(rime_chars):,}")
     print(f"  tojyutping (all)         : {len(tojyutping_all):,}")

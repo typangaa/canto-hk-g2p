@@ -1,0 +1,49 @@
+# variant_words.tsv — 借音字 (phonetic-loan character) alias overrides.
+# Format: variant_spelling<TAB>canonical_spelling
+#
+# Each row means "variant_spelling is a common miswriting of canonical_spelling
+# that borrows a homophone's sound" — NOT a true 異體字 (orthographic variant
+# with the same underlying reading). The canonical_spelling MUST already
+# resolve in word_entries (rime-cantonese / ToJyutping / oral_hk) at build
+# time; build_dict.py copies its jyutping verbatim and tags the variant with
+# source="variant_alias", so the reading never drifts out of sync with the
+# canonical word's own dict entry.
+#
+# Root cause (see issue investigation, v2.1.0): the variant character carries
+# its OWN legitimate reading elsewhere (e.g. 訓 in 訓練/教訓 is genuinely
+# fan3 — nothing wrong there). Char-level fallback has no way to know a
+# *specific word* is borrowing a different character's sound, so it silently
+# returns the variant character's native reading instead. Word-level alias
+# entries are the only fix; there is no general character-level rule.
+#
+# License: Apache-2.0 (canto-g2p project, hand-curated). Compiled from public
+# linguistic knowledge of documented Cantonese 借音字, independently verified
+# — NOT extracted from any single restricted-license dictionary (e.g. words.hk).
+#
+# Before adding an entry, check for segmentation collisions: the variant
+# spelling must not be a prefix of some OTHER real word sharing the same
+# first character(s), or the longest-match segmenter will shadow that real
+# word. E.g. `個度` (for 嗰度) was tried and rejected — it collides with the
+# real word `度數` inside `個度數` ("this reading/number"), turning it into
+# `個度`+`數` instead of `個`+`度數`. Check with:
+#   uv run python3 -c "... any(w.startswith(prefix) and len(w) > len(prefix) ..."
+# over word_entries before committing a new row.
+#
+# Skips lines starting with '#' or blank lines.
+訓覺	瞓覺
+岩岩	啱啱
+果度	嗰度
+緊係	梗係
+係度	喺度
+念住	諗住
+林住	諗住
+禁掣	撳掣
+㩒掣	撳掣
+令女	靚女
+亂嗡	亂噏
+晒氣	嘥氣
+甘樣	噉樣
+甘多	咁多
+吾該	唔該
+吾知	唔知
+吾好	唔好
