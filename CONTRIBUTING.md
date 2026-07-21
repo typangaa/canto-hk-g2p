@@ -37,12 +37,12 @@ maturin develop --release
 # Rust unit tests (159 tests)
 cargo test
 
-# Python integration tests (335 tests)
+# Python integration tests (345 tests)
 uv run --group dev pytest tests/ -v
 # or: python3 -m pytest tests/ -v
 ```
 
-All 494 tests must pass before submitting a pull request.
+All 504 tests must pass before submitting a pull request.
 
 ## Project structure
 

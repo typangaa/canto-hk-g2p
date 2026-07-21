@@ -63,14 +63,19 @@ def test_source_values_are_valid(p):
 # ── Pure Cantonese ────────────────────────────────────────────────────────────
 
 def test_pure_cantonese_hongkong(p):
+    # "香港" is a purely-compositional rime word_dict entry (hoeng1 gong2 ==
+    # its own chars' solo readings) — pruned from the segmentation dict
+    # (v2.3.0, see CHANGELOG) since it shadowed real compounds starting
+    # with "港" without adding any G2P information itself. It now resolves
+    # char-by-char to the SAME jyutping, just as two tokens instead of one.
     r = p.convert_detailed("香港")
-    assert len(r) == 1
-    token, jp, lang, confidence, source = r[0]
-    assert token == "香港"
-    assert jp == "hoeng1 gong2"
-    assert lang == "yue"
-    assert confidence == "certain"
-    assert source == "rime"
+    assert len(r) == 2
+    assert [t[1] for t in r] == ["hoeng1", "gong2"]
+    assert "".join(t[0] for t in r) == "香港"
+    for token, jp, lang, confidence, source in r:
+        assert lang == "yue"
+        assert confidence == "certain"
+        assert source == "tojyutping"
 
 
 def test_pure_cantonese_particle_ge3(p):

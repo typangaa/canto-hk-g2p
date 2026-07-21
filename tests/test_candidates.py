@@ -91,8 +91,15 @@ def test_single_char_candidates_dedup_and_order():
 # ── No known ambiguity → single-item list, "certain" confidence ────────────
 
 def test_no_ambiguity_reports_single_candidate(p):
+    # "香港" is purely-compositional and was pruned from the segmentation
+    # dict (v2.3.0, see CHANGELOG "segmentation-shadow pruning") — it now
+    # resolves as two per-char tokens with the same combined jyutping.
     result = p.convert_candidates("香港")
-    assert result == [("香港", ["hoeng1 gong2"], "yue", "certain", "rime")]
+    assert [r[:3] for r in result] == [
+        ("香", ["hoeng1"], "yue"),
+        ("港", ["gong2"], "yue"),
+    ]
+    assert all(r[3] == "certain" and r[4] == "tojyutping" for r in result)
 
 
 def test_word_dict_hit_with_no_alternates_is_single_item(p):
@@ -213,7 +220,12 @@ def test_source_user_dict_for_override():
 
 
 def test_source_rime_for_plain_dict_hit(p):
-    assert p.convert_candidates("香港")[0][4] == "rime"
+    # "把口" (baa2 hau1, colloquial "mouth") survives as a single rime
+    # word_dict entry — most common everyday 2-char words also have their
+    # own ToJyutping trie entry, so segmentation-shadow pruning's word
+    # source tag reads "tojyutping" for those instead; "把口" isn't in
+    # ToJyutping's trie, so it keeps its plain "rime" source.
+    assert p.convert_candidates("把口")[0][4] == "rime"
 
 
 def test_source_variant_alias_for_phonetic_loan_word(p):
@@ -226,9 +238,17 @@ def test_source_variant_alias_for_phonetic_loan_word(p):
 
 def test_variant_alias_does_not_corrupt_native_reading(p):
     """訓 keeps its own genuine reading (fan3) in 教訓/訓練 — only the exact
-    借音字 word 訓覺 is affected, not the character 訓 in general."""
-    assert p.convert_candidates("教訓")[0][4] == "rime"
-    assert p.convert_candidates("訓練")[0][4] == "rime"
+    借音字 word 訓覺 is affected, not the character 訓 in general.
+
+    教訓/訓練 are purely-compositional rime entries, pruned from the
+    segmentation dict by segmentation-shadow pruning (v2.3.0) — they now
+    resolve char-by-char (source="tojyutping" per char) to the same
+    jyutping rather than as a single "rime" word_dict hit.
+    """
+    assert p.convert("教訓") == "gaau3 fan3"
+    assert p.convert("訓練") == "fan3 lin6"
+    for word in ("教訓", "訓練"):
+        assert all(r[4] == "tojyutping" for r in p.convert_candidates(word))
 
 
 def test_variant_alias_gan2_hai6_becomes_gang2_hai6(p):

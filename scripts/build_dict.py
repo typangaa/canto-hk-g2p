@@ -484,6 +484,129 @@ def build_candidates(
 
 
 # ---------------------------------------------------------------------------
+# Segmentation-shadow pruning (2026-07-21)
+# ---------------------------------------------------------------------------
+
+# Must mirror MAX_WORD_CHARS in src/segment.rs.
+SEGMENT_MAX_WORD_CHARS = 10
+
+
+def _solo_char_reading(char: str, word_entries: Dict[str, str], char_entries: Dict[str, str]) -> str:
+    """
+    Mirrors g2p.rs's `token_to_jyutping` resolution for a single orphaned
+    CJK character reaching the segmenter as its own token: word_dict is
+    checked BEFORE char_dict (word_entries legitimately contains many
+    single-char keys, e.g. from ToJyutping's trie).
+    """
+    if char in word_entries:
+        return word_entries[char]
+    return char_entries.get(char, char)
+
+
+def _segment_greedy(text: str, word_dict: Dict[str, str], max_len: int = SEGMENT_MAX_WORD_CHARS) -> List[str]:
+    """Pure-Python mirror of segment.rs's segment_cjk(): greedy leftmost
+    longest-prefix-match over `word_dict`, one CJK run at a time."""
+    tokens: List[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        match = None
+        for length in range(min(max_len, n - i), 0, -1):
+            cand = text[i : i + length]
+            if cand in word_dict:
+                match = cand
+                break
+        if match is None:
+            match = text[i]
+        tokens.append(match)
+        i += len(match)
+    return tokens
+
+
+def _reconstruct_reading(
+    text: str,
+    word_dict: Dict[str, str],
+    word_entries: Dict[str, str],
+    char_entries: Dict[str, str],
+) -> str:
+    """Mirrors token_to_jyutping(): segment `text` against `word_dict`, then
+    resolve each resulting token the same way the Rust runtime would."""
+    parts: List[str] = []
+    for tok in _segment_greedy(text, word_dict):
+        if tok in word_dict:
+            parts.append(word_dict[tok])
+        elif len(tok) == 1:
+            parts.append(_solo_char_reading(tok, word_entries, char_entries))
+        else:
+            # Multi-char orphan — architecturally rare, mirrors g2p.rs's
+            # per-character fallback loop.
+            parts.append(" ".join(_solo_char_reading(c, word_entries, char_entries) for c in tok))
+    return " ".join(parts)
+
+
+def prune_compositional_word_entries(
+    word_entries: Dict[str, str],
+    char_entries: Dict[str, str],
+    protected_keys: Set[str],
+) -> Tuple[Dict[str, str], Set[str]]:
+    """
+    Remove word_entries whose presence in the SEGMENTATION dict conveys no
+    G2P information beyond plain character-by-character fallback, but which
+    actively cause the greedy longest-match segmenter to shadow real
+    multi-char words starting mid-string.
+
+    Root cause: rime-cantonese's words.dict.yaml is an IME phrase-completion
+    list, not a pure lexicon — a large fraction of its entries are "purely
+    compositional" (e.g. "我瞓" = "ngo5 fan3", exactly char_entries['我'] +
+    char_entries['瞓']). Left in the segmentation dict, these entries still
+    resolve correctly when matched on their own, but their PRESENCE greedily
+    consumes a prefix of the string, so a real compound starting at the
+    swallowed character (e.g. "瞓覺" right after "我") never gets a chance to
+    match — the orphaned trailing character falls into ambiguous
+    "ranked"-confidence char fallback instead (e.g. 覺 → gok3 instead of the
+    correct gaau3). See CHANGELOG's 瞓覺 case (2026-07-21) for the case that
+    surfaced this via HKCanCor corpus review.
+
+    Safety check (per entry, not a heuristic): an entry W is only pruned if
+    — after removing ALL prune candidates from the segmentation dict —
+    re-segmenting the bare string W and resolving each resulting token
+    reconstructs EXACTLY W's original reading. This runs to a fixed point:
+    any entry whose own reading would change if pruned is kept back, and the
+    whole candidate set is re-checked against the resulting (less-aggressive)
+    dict until no further entries need to be kept back (empirically converges
+    in 1-2 passes over the full bundled dictionary).
+
+    `protected_keys` (oral_hk.tsv / variant_words.tsv / tone_sandhi_words.tsv)
+    are never pruned regardless of this test — those are final, hand-curated
+    decisions, not raw rime/tojyutping data.
+    """
+    candidates: Set[str] = set()
+    for word, reading in word_entries.items():
+        if len(word) < 2 or word in protected_keys:
+            continue
+        syllables = reading.split()
+        if len(syllables) != len(word):
+            continue
+        compositional = [_solo_char_reading(c, word_entries, char_entries) for c in word]
+        if compositional == syllables:
+            candidates.add(word)
+
+    prune_set = set(candidates)
+    for _ in range(5):
+        pruned_dict = {w: r for w, r in word_entries.items() if w not in prune_set}
+        keep_back = {
+            w
+            for w in prune_set
+            if _reconstruct_reading(w, pruned_dict, word_entries, char_entries) != word_entries[w]
+        }
+        if not keep_back:
+            break
+        prune_set -= keep_back
+
+    pruned_word_entries = {w: r for w, r in word_entries.items() if w not in prune_set}
+    return pruned_word_entries, prune_set
+
+
+# ---------------------------------------------------------------------------
 # Binary writer
 # ---------------------------------------------------------------------------
 
@@ -671,6 +794,35 @@ def main() -> None:
             char_source[word] = "oral_hk"
 
     # ------------------------------------------------------------------
+    # Step 5a: Prune segmentation-shadow entries (2026-07-21)
+    #   Purely-compositional rime/tojyutping word entries (their reading ==
+    #   plain char-by-char concatenation) convey zero G2P information but
+    #   greedily shadow real compounds starting mid-string (e.g. "我瞓"
+    #   blocking "瞓覺" from ever matching, orphaning "覺" into ambiguous
+    #   ranked char fallback → wrong gok3 instead of gaau3). Removing a
+    #   pruned entry never changes its OWN reading — see
+    #   prune_compositional_word_entries()'s fixed-point safety proof.
+    #   oral_hk/variant_alias/tone_sandhi entries are always protected, and
+    #   so is any entry with genuine word-level candidate ambiguity (rime's
+    #   own tied readings, or ToJyutping's ranked candidates) — e.g. "正經"
+    #   (zing3 ging1 / zing1 ging1) must keep surfacing that word-specific
+    #   tie via the Candidates API, not collapse into an unrelated per-char
+    #   ambiguity for "正" alone (zing3/zeng3/zing1, most of which don't even
+    #   apply to this word).
+    # ------------------------------------------------------------------
+    ambiguous_word_keys = set(tojyutping_candidates) | {
+        w for w, r in rime_readings.items() if len(w) >= 2 and len(set(r)) > 1
+    }
+    protected_keys = (
+        set(oral_dict) | set(variant_dict) | set(tone_sandhi_dict) | ambiguous_word_keys
+    )
+    word_entries, pruned_word_keys = prune_compositional_word_entries(
+        word_entries, char_entries, protected_keys
+    )
+    for word in pruned_word_keys:
+        word_source.pop(word, None)
+
+    # ------------------------------------------------------------------
     # Step 5b: Build Candidates API sidecars (Phase 7b-2) — sparse, only
     #   keys with 2+ distinct known readings. oral_hk/variant_alias/
     #   tone_sandhi entries are excluded entirely: a hand-curated override
@@ -679,7 +831,7 @@ def main() -> None:
     word_candidates, word_candidates_confidence = build_candidates(
         word_entries, rime_readings, tojyutping_candidates
     )
-    for word in list(oral_dict) + list(tone_sandhi_dict):
+    for word in list(oral_dict) + list(tone_sandhi_dict) + list(pruned_word_keys):
         word_candidates.pop(word, None)
         word_candidates_confidence.pop(word, None)
 
@@ -762,6 +914,7 @@ def main() -> None:
     print(f"  oral_hk entries          : {len(oral_dict):,}")
     print(f"  variant_words (aliases)  : {len(variant_dict):,}")
     print(f"  tone_sandhi_words        : {len(tone_sandhi_dict):,}")
+    print(f"  pruned segmentation-shadow entries : {len(pruned_word_keys):,}")
     print(f"  rime-cantonese (all)     : {len(rime_all):,}")
     print(f"  rime-cantonese (chars)   : {len(rime_chars):,}")
     print(f"  tojyutping (all)         : {len(tojyutping_all):,}")

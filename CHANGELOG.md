@@ -4,6 +4,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] — 2026-07-21
+
+### Fixed — segmentation-shadow pruning (structural fix for a whole bug class)
+
+While reviewing the v2.2.0 HKCanCor 變調 work, a real production sentence
+surfaced a G2P bug not caused by any changed-tone entry: `p.convert("我瞓覺先")`
+produced `ngo5 fan3 gok3 sin1` — `覺` resolved to `gok3` ("to feel") instead
+of the correct `gaau3` ("[瞓覺] to sleep"). 9/9 diagnostic sentences showed
+the same pattern (`要瞓覺喇`, `仲未瞓覺`, `今日好早瞓覺`, `快啲瞓覺`, `你瞓覺未`, …).
+
+**Root cause.** `segment.rs`'s segmenter is a pure greedy leftmost-longest-
+match over the bundled word dict, with no lookahead. rime-cantonese's
+`jyut6ping3.words.dict.yaml` is an IME phrase-completion list, not a pure
+lexicon: entries like `我瞓` ("ngo5 fan3"), `早瞓`, `未瞓`, `要瞓`, `快啲瞓` are
+literally *purely compositional* — their reading is exactly the char-by-char
+concatenation of each character's own solo reading, i.e. they carry **zero**
+G2P information beyond what per-character fallback already gives. Kept in
+the segmentation dict, they still resolve correctly on their own, but their
+mere presence greedily consumes a prefix of the string (e.g. `我`+`瞓` in
+`我瞓覺先`), so the real compound `瞓覺` starting at the swallowed `瞓` never
+gets a chance to match — `覺` is orphaned and falls into ambiguous
+`"ranked"`-confidence char fallback (`gok3`/`gaau3`/`gaau1`/`gaau4`, rank-0
+default `gok3`) instead. This also explains why the v2.2.0 T28-style tied-
+confidence audit never caught it: the orphaned token's confidence is
+`"ranked"`, not `"tied"` — a confidence tier that audit didn't scan.
+
+**Scope.** A scan of the full bundled dictionary found this is not a one-off:
+**73.4% of all multi-char `word_entries` (81,944 / 111,596)** are purely
+compositional by this definition — inert at best, actively shadow real
+compounds at worst.
+
+**Fix — `scripts/build_dict.py::prune_compositional_word_entries()`.** A new
+build step removes purely-compositional word entries from the segmentation
+dict, but *only* when doing so is proven — not assumed — to be safe:
+
+1. An entry `W` (len ≥ 2) is a *prune candidate* if its reading equals the
+   char-by-char concatenation of each character's own solo reading (via
+   `char_entries`), it isn't an `oral_hk.tsv` / `variant_words.tsv` /
+   `tone_sandhi_words.tsv` entry (those are final, hand-curated decisions,
+   always protected), and it carries no genuine word-level candidate
+   ambiguity (rime's own tied readings, or ToJyutping's ranked candidates —
+   e.g. `正經` "zing3 ging1"/"zing1 ging1" and `處理` are protected even
+   though their rank-0 reading happens to be compositional, so their
+   word-specific tie keeps surfacing via the Candidates API instead of
+   collapsing into an unrelated per-character ambiguity).
+2. **Safety is verified per entry, not assumed**: after removing *all*
+   prune candidates from the dict at once, each candidate's own string is
+   re-segmented and re-resolved against the reduced dict. If the
+   reconstructed reading no longer matches the original, that entry is kept
+   back. This re-checks to a fixed point (converges in 1-2 passes over the
+   full bundled dictionary) — no entry is pruned unless its own output is
+   provably unchanged.
+
+**Result**: `word.bin` shrank from 141,835 to 61,729 entries (79,610 pruned,
+~44% the size). All 9 `瞓覺`-family sentences now resolve correctly. `cargo
+test` (159) and `pytest` (now 345, +11) pass with zero output regressions —
+`Pipeline.convert()` is byte-identical for every pruned entry, by
+construction of the safety check above.
+
+**Known follow-on limitation (not fixed by this release, tracked
+separately)**: `佢瞓緊覺` ("she is sleeping") still resolves `覺` as `gok3`.
+This is a *different* bug class — the aspect marker `緊` sits contiguously
+between `瞓` and `覺`, so `瞓覺` is never a contiguous substring for any
+dict-based segmenter to match. Fixing this needs a grammar-aware (aspect-
+marker-skipping) segmentation feature, out of scope here. See
+`tests/test_segmentation_shadow.py::test_aspect_marker_insertion_is_a_known_separate_limitation`.
+
+**API impact — read before upgrading if you depend on `convert_detailed()` /
+`convert_candidates()` token boundaries.** `Pipeline.convert()` output is
+unaffected for every existing input (proven, not just tested). But for
+words that were purely-compositional rime/ToJyutping entries — the large
+majority of common everyday vocabulary, e.g. `香港`, `教訓`, `旅遊`, `冷氣`,
+`飛機` — `convert_detailed()`/`convert_candidates()` now report **one token
+per character** (source `"tojyutping"`/`"rime"`/`"unihan"` per char) instead
+of a single word-level token (source `"rime"`/`"tojyutping"`). This is a
+side effect of the fix, not a bug: it makes per-character ambiguity that was
+previously hidden behind an accidentally-"certain" word-level tag visible
+again, which is arguably more informative for confidence-based filtering —
+but it is a real behavioral change to `convert_detailed()`/`convert_candidates()`
+tokenization for a very large fraction of the dictionary.
+
 ## [2.2.0] — 2026-07-20
 
 ### Added — HKCanCor-verified 變調 (changed-tone) word corrections
