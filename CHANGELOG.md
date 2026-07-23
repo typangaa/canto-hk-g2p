@@ -57,7 +57,7 @@ dict, but *only* when doing so is proven — not assumed — to be safe:
    full bundled dictionary) — no entry is pruned unless its own output is
    provably unchanged.
 
-**Result**: `word.bin` shrank from 141,835 to 61,729 entries (79,610 pruned,
+**Result**: `word.bin` shrank from 141,835 to 62,225 entries (79,610 pruned,
 ~44% the size). All 9 `瞓覺`-family sentences now resolve correctly. `cargo
 test` (159) and `pytest` (now 345, +11) pass with zero output regressions —
 `Pipeline.convert()` is byte-identical for every pruned entry, by
