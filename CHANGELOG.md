@@ -45,12 +45,19 @@ tokens naturally break the required adjacency, so cross-clause coincidences
 sidecar — `None`/absent data dirs behave exactly as before (fully
 backward-compatible).
 
-**Result**: `佢瞓緊覺`/`佢瞓咗覺`/`佢瞓過覺`/`佢瞓開覺` all now resolve `覺` as
-`gaau3`. `resolve_token`'s `source` field reports `"separable_compound"` for
-overridden tokens via `convert_detailed()`/`convert_candidates()`. Unrelated
-usages of `緊`/`覺` (e.g. `我覺得`, `我而家好緊張`) are unaffected — the
-override only fires for the specific whitelisted verb+noun pair. `cargo test`
-(168, +9) and `pytest` (349, +4) pass.
+**Result**: `佢瞓緊覺`/`佢瞓咗覺` (the two natural, common everyday forms) now
+resolve `覺` as `gaau3`. `瞓過覺`/`瞓開覺` are also handled correctly by the same
+general mechanism — `過`/`開` remain in the aspect-marker closed class for
+future whitelist entries — but native-speaker judgment marks those two
+specific combinations as uncommon/marked for this verb-object pair (sleep
+isn't the kind of one-off "experience" `過` usually frames, and `開` usually
+wants a specifying complement like `瞓開呢張床`), so they aren't asserted as
+naturalistic gold sentences in the test suite. `resolve_token`'s `source`
+field reports `"separable_compound"` for overridden tokens via
+`convert_detailed()`/`convert_candidates()`. Unrelated usages of `緊`/`覺`
+(e.g. `我覺得`, `我而家好緊張`) are unaffected — the override only fires for the
+specific whitelisted verb+noun pair. `cargo test` (168, +9) and `pytest`
+(347, +2) pass.
 
 ## [2.3.0] — 2026-07-21
 

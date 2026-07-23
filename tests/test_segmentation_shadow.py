@@ -75,11 +75,19 @@ def test_pruning_does_not_change_own_reading_of_pruned_compositional_words(p):
 # CONTIGUOUS substring once an aspect marker is inserted, so no amount of
 # dict pruning could fix it; it needed a whitelist-driven post-segmentation
 # pass instead (see CHANGELOG [2.4.0]).
+#
+# Only 緊 (progressive) and 咗 (perfective) are included here as naturalistic
+# gold sentences — 過 (experiential) and 開 (habitual) are grammatically
+# supported by the same mechanism (ASPECT_MARKERS in src/separable.rs is the
+# genuine closed class of Cantonese aspect markers, kept general for future
+# separable-compound entries), but "瞓過覺"/"瞓開覺" read as marked/awkward
+# for THIS specific verb-object pair without more context (sleep is a
+# routine necessity, not the kind of one-off "experience" 過 usually frames,
+# and 開 usually wants a specifying complement like 瞓開呢張床/瞓開晏覺). Native-
+# speaker judgment, not a mechanism limitation — see CHANGELOG [2.4.0].
 ASPECT_MARKER_GOLD_SENTENCES = [
     ("佢瞓緊覺", "keoi5 fan3 gan2 gaau3"),   # progressive
     ("佢瞓咗覺", "keoi5 fan3 zo2 gaau3"),    # perfective
-    ("佢瞓過覺", "keoi5 fan3 gwo3 gaau3"),   # experiential
-    ("佢瞓開覺", "keoi5 fan3 hoi1 gaau3"),   # habitual
 ]
 
 

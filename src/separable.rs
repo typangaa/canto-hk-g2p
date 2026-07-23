@@ -2,10 +2,13 @@ use crate::dict::Dict;
 use std::collections::HashMap;
 
 /// Closed class of Cantonese aspect markers that can be inserted between the
-/// two syllables of a separable verb-object compound (離合詞), e.g.
-/// 瞓覺 → 瞓緊覺 (progressive) / 瞓咗覺 (perfective) / 瞓過覺 (experiential) /
-/// 瞓開覺 (habitual). This is a genuinely closed grammatical class in
-/// Cantonese, so it's a fixed list rather than data-driven.
+/// two syllables of a separable verb-object compound (離合詞) — 緊
+/// (progressive), 咗 (perfective), 過 (experiential), 開 (habitual). E.g.
+/// 瞓覺 → 瞓緊覺 ("sleeping") / 瞓咗覺 ("slept"). Whether all four markers read
+/// as natural for a *given* compound is a lexical/pragmatic question (e.g.
+/// 瞓覺 pairs naturally with 緊/咗 but not idiomatically with 過/開 without
+/// more context) — this list is the grammatical closed class itself, kept
+/// general so future whitelist entries aren't artificially restricted.
 const ASPECT_MARKERS: &[&str] = &["緊", "咗", "過", "開"];
 
 /// Scans `tokens` for `[verb, aspect_marker, noun]` triples — three
