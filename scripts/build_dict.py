@@ -32,6 +32,7 @@ RAW_DIR = DATA_DIR / "raw"
 ORAL_HK_TSV = DATA_DIR / "oral_hk.tsv"
 VARIANT_WORDS_TSV = DATA_DIR / "variant_words.tsv"
 TONE_SANDHI_WORDS_TSV = DATA_DIR / "tone_sandhi_words.tsv"
+SEPARABLE_WORDS_TSV = DATA_DIR / "separable_words.tsv"
 
 RIME_FILES: List[Path] = [
     RAW_DIR / "rime-cantonese" / "jyut6ping3.chars.dict.yaml",
@@ -55,6 +56,7 @@ OUT_WORD_CANDIDATES_CONFIDENCE_BIN = PKG_DATA_DIR / "word_candidates_confidence.
 OUT_CHAR_CANDIDATES_CONFIDENCE_BIN = PKG_DATA_DIR / "char_candidates_confidence.bin"
 OUT_WORD_SOURCE_BIN = PKG_DATA_DIR / "word_source.bin"
 OUT_CHAR_SOURCE_BIN = PKG_DATA_DIR / "char_source.bin"
+OUT_SEPARABLE_BIN = PKG_DATA_DIR / "separable.bin"
 CMUDICT_SRC = RAW_DIR / "cmudict" / "cmudict.dict"
 CMUDICT_DST = PKG_DATA_DIR / "cmudict.dict"
 
@@ -133,6 +135,37 @@ def load_variant_words(path: Path) -> Dict[str, str]:
                 result[variant] = canonical
 
     print(f"[variant]   loaded {len(result):,} entries from {path.name}")
+    return result
+
+
+def load_separable_words(path: Path) -> Dict[str, str]:
+    """
+    Load separable_words.tsv — 離合詞 (separable verb-object compounds) that
+    can be split by an aspect marker (緊/咗/過/開) in real speech.
+    Format:  word<TAB>note
+    Skips lines starting with '#' or blank lines. The note column is
+    documentation only; the reading itself is read from word_entries in
+    main(), after word_entries is fully built (including pruning).
+    """
+    result: Dict[str, str] = {}
+    if not path.exists():
+        print(f"[WARN] separable_words.tsv not found: {path}", file=sys.stderr)
+        return result
+
+    with open(path, encoding="utf-8") as fh:
+        for lineno, raw in enumerate(fh, 1):
+            line = raw.rstrip("\n\r")
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 2:
+                print(f"[WARN] separable_words.tsv:{lineno}: bad line: {line!r}", file=sys.stderr)
+                continue
+            word, note = parts[0].strip(), parts[1].strip()
+            if word and note:
+                result[word] = note
+
+    print(f"[separable] loaded {len(result):,} entries from {path.name}")
     return result
 
 
@@ -844,6 +877,39 @@ def main() -> None:
             char_candidates.pop(word, None)
             char_candidates_confidence.pop(word, None)
 
+    # ------------------------------------------------------------------
+    # Step 5c: Build separable.bin (離合詞, 2026-07-23) — a small whitelist
+    #   of separable verb-object compounds (e.g. 瞓覺) that can be split by
+    #   a closed-class aspect marker (緊/咗/過/開) in real speech (瞓緊覺).
+    #   Fixes 佢瞓緊覺 mis-resolving 覺 as gok3 instead of gaau3 — a
+    #   different bug class from v2.3.0's segmentation-shadowing fix, since
+    #   "瞓覺" is never a contiguous substring once an aspect marker is
+    #   inserted. Reads its readings straight from the final word_entries
+    #   (post-pruning) so it can never drift out of sync with word.bin.
+    # ------------------------------------------------------------------
+    separable_notes = load_separable_words(SEPARABLE_WORDS_TSV)
+    separable_dict: Dict[str, str] = {}
+    for word in separable_notes:
+        if len(word) != 2:
+            raise SystemExit(
+                f"[ERROR] separable_words.tsv: {word!r} is not exactly 2 "
+                f"characters — only single-char verb + single-char noun "
+                f"compounds are supported"
+            )
+        if word not in word_entries:
+            raise SystemExit(
+                f"[ERROR] separable_words.tsv: {word!r} not found in "
+                f"word_entries — it must already resolve via "
+                f"rime/tojyutping/oral_hk"
+            )
+        reading = word_entries[word]
+        if len(reading.split(" ")) != 2:
+            raise SystemExit(
+                f"[ERROR] separable_words.tsv: {word!r} reading {reading!r} "
+                f"does not split into exactly 2 syllables"
+            )
+        separable_dict[word] = reading
+
     # Sanity check: word_source/char_source must cover every key in
     # word_entries/char_entries (issue #13) — both are built via the exact
     # same priority chain, so a mismatch means the chains drifted apart.
@@ -876,6 +942,8 @@ def main() -> None:
     word_source_bytes = write_bin(word_source, OUT_WORD_SOURCE_BIN)
     print(f"[build]     Writing {OUT_CHAR_SOURCE_BIN} ...")
     char_source_bytes = write_bin(char_source, OUT_CHAR_SOURCE_BIN)
+    print(f"[build]     Writing {OUT_SEPARABLE_BIN} ...")
+    separable_bytes = write_bin(separable_dict, OUT_SEPARABLE_BIN)
 
     # ------------------------------------------------------------------
     # Validate output files
@@ -889,6 +957,7 @@ def main() -> None:
     validate_bin(OUT_CHAR_CANDIDATES_CONFIDENCE_BIN, len(char_candidates_confidence))
     validate_bin(OUT_WORD_SOURCE_BIN, len(word_source))
     validate_bin(OUT_CHAR_SOURCE_BIN, len(char_source))
+    validate_bin(OUT_SEPARABLE_BIN, len(separable_dict))
 
     # ------------------------------------------------------------------
     # Final stats
@@ -905,9 +974,11 @@ def main() -> None:
     print(f"  char_candidates_confidence.bin : {len(char_candidates_confidence):>8,} entries   {char_confidence_bytes:>10,} bytes  ({char_confidence_bytes / 1024:.1f} KiB)")
     print(f"  word_source.bin     : {len(word_source):>8,} entries   {word_source_bytes:>10,} bytes  ({word_source_bytes / 1024:.1f} KiB)")
     print(f"  char_source.bin     : {len(char_source):>8,} entries   {char_source_bytes:>10,} bytes  ({char_source_bytes / 1024:.1f} KiB)")
+    print(f"  separable.bin       : {len(separable_dict):>8,} entries   {separable_bytes:>10,} bytes  ({separable_bytes / 1024:.1f} KiB)")
     total = (
         word_bytes + char_bytes + word_candidates_bytes + char_candidates_bytes
         + word_confidence_bytes + char_confidence_bytes + word_source_bytes + char_source_bytes
+        + separable_bytes
     )
     print(f"  total               :                     {total:>10,} bytes  ({total / 1024:.1f} KiB)")
     print()
@@ -915,6 +986,7 @@ def main() -> None:
     print(f"  variant_words (aliases)  : {len(variant_dict):,}")
     print(f"  tone_sandhi_words        : {len(tone_sandhi_dict):,}")
     print(f"  pruned segmentation-shadow entries : {len(pruned_word_keys):,}")
+    print(f"  separable_words (離合詞)  : {len(separable_dict):,}")
     print(f"  rime-cantonese (all)     : {len(rime_all):,}")
     print(f"  rime-cantonese (chars)   : {len(rime_chars):,}")
     print(f"  tojyutping (all)         : {len(tojyutping_all):,}")

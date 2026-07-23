@@ -1,0 +1,20 @@
+# separable_words.tsv — 離合詞 (separable verb-object compounds) whose
+# second syllable's reading differs from its own default/solo reading, and
+# which can have a closed-class aspect marker (緊/咗/過/開) inserted between
+# the two syllables in real speech (瞓緊覺, 瞓咗覺, 瞓過覺, 瞓開覺).
+# License: Apache-2.0 (canto-g2p project, hand-curated)
+#
+# Format: word<TAB>note (note is documentation only, not consumed by Rust —
+# the reading itself is always read from word_entries at build time, so it
+# can never drift out of sync with the word's own dict entry).
+#
+# Each word must:
+#   - be exactly 2 characters (this pilot only handles single-char verb +
+#     single-char noun; longer separable compounds are out of scope)
+#   - already resolve correctly in word_entries (rime/tojyutping/oral_hk) —
+#     build_dict.py raises SystemExit if not
+#
+# Only add an entry when at least one syllable's compound reading actually
+# differs from its own default/solo reading — otherwise the char-fallback
+# path already produces the right answer and this entry is a no-op.
+瞓覺	fan3 gaau3 — 覺 here is gaau3 (sleep), not its default gok3 (feel/sense)

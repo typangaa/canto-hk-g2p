@@ -4,6 +4,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] — 2026-07-23
+
+### Fixed — separable verb-object compounds split by aspect markers (離合詞)
+
+Closes the known follow-on limitation from v2.3.0: `p.convert("佢瞓緊覺")`
+("she is sleeping") resolved `覺` as `gok3` ("to feel") instead of the
+correct `gaau3` ("[瞓覺] to sleep").
+
+**Root cause — different bug class from v2.3.0.** `緊` is a Cantonese aspect
+marker (≈ "-ing") that sits *between* the two syllables of the separable
+verb-object compound `瞓覺` (離合詞, cf. Mandarin 睡覺→睡了覺). "瞓覺" is
+therefore never a *contiguous* substring in `佢瞓緊覺` for any dict-based
+longest-match segmenter to find — v2.3.0's shadowing fix (removing entries
+that block a contiguous match) cannot help here, since there's no contiguous
+match to unblock in the first place.
+
+**Research.** Surveyed via agy-gemini before implementing: Mandarin NLP
+handles 离合词 splitting via joint segmentation/dependency parsing;
+discontinuous-match approaches for CJK include pattern/FSA-with-gap,
+grid-tagging (borrowed from discontinuous NER), and BERT contextual
+disambiguation (used by g2pW-Cantonese). No existing Cantonese G2P tool
+(ToJyutping, PyCantonese) handles this class at all. g2pW-Cantonese's
+BERT approach was ruled out — already excluded from canto-g2p for license
+reasons (trained on words.hk/CantoDict) and because it would require an ML
+runtime, contradicting this project's zero-dependency, mmap+binary-search
+architecture.
+
+**Fix — whitelist-driven pattern matching, `src/separable.rs` +
+`data/separable_words.tsv`.** After segmentation, a new pass scans the token
+sequence for `[verb, aspect_marker, noun]` triples — three immediately-
+adjacent single-character tokens with a known aspect marker (`緊`/`咗`/`過`/
+`開`, a fixed closed grammatical class) in the middle. If `verb+noun` is a
+whitelisted separable compound (currently just `瞓覺` — a deliberately small
+pilot list, easy to extend via `data/separable_words.tsv`), each syllable's
+reading is forced to the compound's own bundled reading (read straight from
+`word.bin` at build time, so it can never drift out of sync). Punctuation
+tokens naturally break the required adjacency, so cross-clause coincidences
+(e.g. "...瞓,緊張...") don't false-positive. New optional `separable.bin`
+sidecar — `None`/absent data dirs behave exactly as before (fully
+backward-compatible).
+
+**Result**: `佢瞓緊覺`/`佢瞓咗覺`/`佢瞓過覺`/`佢瞓開覺` all now resolve `覺` as
+`gaau3`. `resolve_token`'s `source` field reports `"separable_compound"` for
+overridden tokens via `convert_detailed()`/`convert_candidates()`. Unrelated
+usages of `緊`/`覺` (e.g. `我覺得`, `我而家好緊張`) are unaffected — the
+override only fires for the specific whitelisted verb+noun pair. `cargo test`
+(168, +9) and `pytest` (349, +4) pass.
+
 ## [2.3.0] — 2026-07-21
 
 ### Fixed — segmentation-shadow pruning (structural fix for a whole bug class)

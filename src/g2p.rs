@@ -88,9 +88,11 @@ pub struct Resolution {
     /// (non-CJK — never touches a dict), `"char_fallback"` (OOV multi-char
     /// token resolved via the per-character loop — architecturally
     /// unreachable through real segmenter output, see known limitation),
-    /// `"unresolved"` (truly unknown char, kept as-is), or `"unknown"` (the
-    /// source sidecar has no entry / is missing for a dict hit — older or
-    /// custom data dirs).
+    /// `"separable_compound"` (a `[verb, aspect_marker, noun]` triple
+    /// matched a whitelisted 離合詞 in `separable.bin` — see
+    /// `crate::separable`), `"unresolved"` (truly unknown char, kept
+    /// as-is), or `"unknown"` (the source sidecar has no entry / is missing
+    /// for a dict hit — older or custom data dirs).
     pub source: String,
 }
 

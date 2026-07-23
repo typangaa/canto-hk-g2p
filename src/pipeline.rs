@@ -1,6 +1,6 @@
 use crate::dict::Dict;
 use crate::user_dict::UserDict;
-use crate::{g2p, normalizer, segment};
+use crate::{g2p, normalizer, segment, separable};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -27,6 +27,12 @@ pub struct Pipeline {
     /// dict hit then reports source `"unknown"`.
     word_source: Option<Dict>,
     char_source: Option<Dict>,
+    /// Whitelist of separable verb-object compounds (離合詞, e.g. 瞓覺) that
+    /// can be split by a closed-class aspect marker (緊/咗/過/開) in real
+    /// speech (瞓緊覺). `None` if `separable.bin` is missing from the data
+    /// directory — older/custom data dirs still work, this override pass
+    /// then simply never fires.
+    separable: Option<Dict>,
     pub punc_norm: bool,
 }
 
@@ -93,6 +99,7 @@ impl Pipeline {
             Dict::load(&dir.join("char_candidates_confidence.bin")).ok();
         let word_source = Dict::load(&dir.join("word_source.bin")).ok();
         let char_source = Dict::load(&dir.join("char_source.bin")).ok();
+        let separable = Dict::load(&dir.join("separable.bin")).ok();
         Ok(Pipeline {
             word_dict,
             char_dict,
@@ -103,6 +110,7 @@ impl Pipeline {
             char_candidates_confidence,
             word_source,
             char_source,
+            separable,
             punc_norm,
         })
     }
@@ -117,7 +125,16 @@ impl Pipeline {
         segment::segment_owned(&normalized, &self.word_dict, &self.user_dict)
     }
 
-    fn resolve(&self, token: &str) -> g2p::Resolution {
+    /// Resolve a single token, or short-circuit to a `separable_compound`
+    /// override (see `crate::separable`) when `override_reading` is `Some`.
+    fn resolve(&self, token: &str, override_reading: Option<&str>) -> g2p::Resolution {
+        if let Some(reading) = override_reading {
+            return g2p::Resolution {
+                candidates: vec![reading.to_owned()],
+                confidence: "certain".to_owned(),
+                source: "separable_compound".to_owned(),
+            };
+        }
         g2p::resolve_token(
             token,
             &self.word_dict,
@@ -136,10 +153,15 @@ impl Pipeline {
         if text.is_empty() {
             return String::new();
         }
-        self.tokens_for(text)
+        let tokens = self.tokens_for(text);
+        let overrides = separable::resolve_separable_overrides(&tokens, self.separable.as_ref());
+        tokens
             .iter()
-            .map(|tok| {
-                g2p::token_to_jyutping(tok, &self.word_dict, &self.char_dict, &self.user_dict)
+            .enumerate()
+            .map(|(idx, tok)| {
+                overrides.get(&idx).cloned().unwrap_or_else(|| {
+                    g2p::token_to_jyutping(tok, &self.word_dict, &self.char_dict, &self.user_dict)
+                })
             })
             .collect::<Vec<_>>()
             .join(" ")
@@ -159,10 +181,13 @@ impl Pipeline {
         if text.is_empty() {
             return vec![];
         }
-        self.tokens_for(text)
+        let tokens = self.tokens_for(text);
+        let overrides = separable::resolve_separable_overrides(&tokens, self.separable.as_ref());
+        tokens
             .into_iter()
-            .map(|tok| {
-                let r = self.resolve(&tok);
+            .enumerate()
+            .map(|(idx, tok)| {
+                let r = self.resolve(&tok, overrides.get(&idx).map(String::as_str));
                 let lang = classify_lang(&tok).to_owned();
                 (tok, r.candidates[0].clone(), lang, r.confidence, r.source)
             })
@@ -215,10 +240,13 @@ impl Pipeline {
         if text.is_empty() {
             return vec![];
         }
-        self.tokens_for(text)
+        let tokens = self.tokens_for(text);
+        let overrides = separable::resolve_separable_overrides(&tokens, self.separable.as_ref());
+        tokens
             .into_iter()
-            .map(|tok| {
-                let r = self.resolve(&tok);
+            .enumerate()
+            .map(|(idx, tok)| {
+                let r = self.resolve(&tok, overrides.get(&idx).map(String::as_str));
                 let lang = classify_lang(&tok).to_owned();
                 (tok, r.candidates, lang, r.confidence, r.source)
             })
@@ -354,6 +382,89 @@ mod tests {
             write_bin(&dir.join("char_source.bin"), cs);
         }
         dir
+    }
+
+    /// Builds a data dir with word.bin/char.bin plus a separable.bin sidecar
+    /// (no other optional sidecars) — for testing the 離合詞 override pass.
+    fn make_data_dir_with_separable(
+        word: &[(&str, &str)],
+        chars: &[(&str, &str)],
+        separable: &[(&str, &str)],
+    ) -> PathBuf {
+        let dir = make_data_dir(word, chars, None, None);
+        write_bin(&dir.join("separable.bin"), separable);
+        dir
+    }
+
+    // ── separable compounds (離合詞) ─────────────────────────────────────────
+
+    #[test]
+    fn test_convert_resolves_separable_compound_across_aspect_marker() {
+        let dir = make_data_dir_with_separable(
+            &[("瞓覺", "fan3 gaau3")],
+            &[("覺", "gok3"), ("瞓", "fan3"), ("緊", "gan2"), ("佢", "keoi5")],
+            &[("瞓覺", "fan3 gaau3")],
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        assert_eq!(p.convert("佢瞓緊覺"), "keoi5 fan3 gan2 gaau3");
+    }
+
+    #[test]
+    fn test_convert_detailed_reports_separable_compound_source() {
+        let dir = make_data_dir_with_separable(
+            &[("瞓覺", "fan3 gaau3")],
+            &[("覺", "gok3"), ("瞓", "fan3"), ("緊", "gan2"), ("佢", "keoi5")],
+            &[("瞓覺", "fan3 gaau3")],
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        let result = p.convert_detailed("佢瞓緊覺");
+        assert_eq!(
+            result,
+            vec![
+                (
+                    "佢".to_string(),
+                    "keoi5".to_string(),
+                    "yue".to_string(),
+                    "certain".to_string(),
+                    "unknown".to_string(),
+                ),
+                (
+                    "瞓".to_string(),
+                    "fan3".to_string(),
+                    "yue".to_string(),
+                    "certain".to_string(),
+                    "separable_compound".to_string(),
+                ),
+                (
+                    "緊".to_string(),
+                    "gan2".to_string(),
+                    "yue".to_string(),
+                    "certain".to_string(),
+                    "unknown".to_string(),
+                ),
+                (
+                    "覺".to_string(),
+                    "gaau3".to_string(),
+                    "yue".to_string(),
+                    "certain".to_string(),
+                    "separable_compound".to_string(),
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_convert_without_separable_bin_unaffected() {
+        // No separable.bin at all — old data dirs keep working, and the
+        // override pass simply never fires (pre-fix behavior unchanged).
+        let dir = make_data_dir(
+            &[("瞓覺", "fan3 gaau3")],
+            &[("覺", "gok3"), ("瞓", "fan3"), ("緊", "gan2"), ("佢", "keoi5")],
+            None,
+            None,
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        assert_eq!(p.convert("佢瞓緊覺"), "keoi5 fan3 gan2 gok3");
     }
 
     // ── convert_candidates ───────────────────────────────────────────────────

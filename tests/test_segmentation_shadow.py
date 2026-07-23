@@ -68,14 +68,33 @@ def test_pruning_does_not_change_own_reading_of_pruned_compositional_words(p):
     assert p.convert("處理") == "cyu5 lei5"    # genuinely ambiguous, protected from pruning
 
 
-def test_aspect_marker_insertion_is_a_known_separate_limitation(p):
-    """
-    "佢瞓緊覺" ("she is sleeping") still resolves 覺 as gok3, not gaau3 — a
-    DIFFERENT bug class from the shadowing fixed above. The aspect marker 緊
-    sits between 瞓 and 覺, so "瞓覺" is never a CONTIGUOUS substring for the
-    segmenter to match in the first place; no amount of dict pruning can fix
-    this without a grammar-aware (aspect-marker-skipping) segmenter, which is
-    out of scope for v2.3.0. Documented here so a future fix has a red test
-    to turn green, and this known gap isn't rediscovered from scratch.
-    """
-    assert p.convert("佢瞓緊覺") == "keoi5 fan3 gan2 gok3"
+# (input text, expected full jyutping output) — 離合詞 (separable
+# verb-object compound) split by a closed-class aspect marker (緊/咗/過/開).
+# Fixed in v2.4.0 via data/separable_words.tsv + src/separable.rs: a
+# DIFFERENT bug class from the shadowing fixed above — "瞓覺" is never a
+# CONTIGUOUS substring once an aspect marker is inserted, so no amount of
+# dict pruning could fix it; it needed a whitelist-driven post-segmentation
+# pass instead (see CHANGELOG [2.4.0]).
+ASPECT_MARKER_GOLD_SENTENCES = [
+    ("佢瞓緊覺", "keoi5 fan3 gan2 gaau3"),   # progressive
+    ("佢瞓咗覺", "keoi5 fan3 zo2 gaau3"),    # perfective
+    ("佢瞓過覺", "keoi5 fan3 gwo3 gaau3"),   # experiential
+    ("佢瞓開覺", "keoi5 fan3 hoi1 gaau3"),   # habitual
+]
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    ASPECT_MARKER_GOLD_SENTENCES,
+    ids=[t for t, _ in ASPECT_MARKER_GOLD_SENTENCES],
+)
+def test_aspect_marker_insertion_now_resolves_correctly(p, text, expected):
+    assert p.convert(text) == expected
+
+
+def test_unrelated_gok3_usage_not_affected_by_separable_compound_whitelist(p):
+    """The whitelist-driven design only fires on the specific verb+noun pair
+    in separable_words.tsv (瞓+覺) — it must not over-trigger just because 緊
+    or 覺 appear near each other for an unrelated reason."""
+    assert p.convert("我覺得好攰") == "ngo5 gok3 dak1 hou2 gui6"
+    assert p.convert("我而家好緊張") == "ngo5 ji4 gaa1 hou2 gan2 zoeng1"

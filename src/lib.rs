@@ -7,6 +7,7 @@ mod g2p;
 mod normalizer;
 mod pipeline;
 mod segment;
+mod separable;
 mod user_dict;
 
 pub use pipeline::Pipeline;

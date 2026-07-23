@@ -34,15 +34,15 @@ maturin develop --release
 ## Running tests
 
 ```bash
-# Rust unit tests (159 tests)
+# Rust unit tests (168 tests)
 cargo test
 
-# Python integration tests (345 tests)
+# Python integration tests (349 tests)
 uv run --group dev pytest tests/ -v
 # or: python3 -m pytest tests/ -v
 ```
 
-All 504 tests must pass before submitting a pull request.
+All 517 tests must pass before submitting a pull request.
 
 ## Project structure
 
@@ -111,6 +111,31 @@ After editing either file, rebuild and reinstall:
 uv run python scripts/build_dict.py
 uv run --with maturin maturin develop --uv
 ```
+
+## Adding a 離合詞 (separable verb-object compound)
+
+If a real compound word can have a Cantonese aspect marker (緊/咗/過/開)
+inserted between its two syllables in natural speech (e.g. 瞓覺 → 瞓緊覺,
+"sleeping") *and* that changes what reading its second syllable needs (瞓覺's
+覺 is `gaau3`, not its own default `gok3`), add a row to
+`data/separable_words.tsv`: `word<TAB>note` (the note is documentation only —
+the reading is always read from the word's own `word.bin` entry at build
+time, so it can never drift out of sync).
+
+Requirements, checked by `build_dict.py` (raises `SystemExit` otherwise):
+- the word must be exactly 2 characters (single-char verb + single-char
+  noun only — longer separable compounds aren't supported yet)
+- the word must already resolve correctly via rime-cantonese / ToJyutping /
+  `oral_hk.tsv`
+
+Only add an entry when it actually changes the outcome — if every syllable's
+compound reading already matches its own default/solo reading, the
+char-fallback path produces the right answer on its own and the whitelist
+entry is a no-op. The aspect-marker list itself (緊/咗/過/開) is a fixed,
+closed grammatical class hardcoded in `src/separable.rs` — it isn't meant to
+grow via data changes.
+
+After editing, rebuild and reinstall the same way as above.
 
 ## License compliance
 
