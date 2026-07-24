@@ -52,20 +52,31 @@ session) — a judgment call from common sentence patterns, documented as such
 in `data/oral_hk.tsv`.
 
 **Fix.** Added `返 → faan1` as a char-level `oral_hk.tsv` override. Discovered
-mid-fix that this silently broke 11 formal-register `返`-compounds that had
-never had their own word-dict entries (返回/返還/返鄉/返程/返聘/返修/返潮/返祖/
-返場/返魂/返本/返城/返樸歸真/返本歸元) — none of rime-cantonese, ToJyutping, or
-our own dict had ever listed them as words, so they were silently relying on
-the very same char-level default this fix flips. Added them as explicit
-protected word entries so longest-match segmentation finds the whole word
-first. `返港`/`返臺`/`返老還童`/`返璞歸真`/`迴光返照` already had their own
-entries and needed no changes.
+mid-fix that this silently broke formal-register `返`-compounds that had
+never had their own word-dict entries — none of rime-cantonese, ToJyutping,
+or our own dict had ever listed them as words, so they were silently relying
+on the very same char-level default this fix flips. Initially over-protected
+14 candidate compounds using ToJyutping's `get_jyutping_list()` output as a
+"cross-check" — but since **none** of these 14 words existed in ToJyutping's
+own dictionary/trie either (`trie.txt` has no entry for any of them),
+ToJyutping's answer for each was *also* just its own char-level default
+composition, not independent verification. This circularity was caught by
+follow-up manual review: `返城`/`返場`/`返潮`(later also removed)/`返本`/`返鄉`
+were re-examined and rejected as genuinely colloquial (`返鄉` is really
+"返鄉下" in HK usage; `返場`/`返本` are casual showbiz/investment slang;
+`返修` isn't standard vocabulary; `返城` is rare in HK Cantonese) — they now
+correctly fall through to the `faan1` bare default instead. Only 9 compounds
+with real independent confidence as formal/written vocabulary are protected
+at `faan2`: `返回`/`返還`/`返程`/`返聘`/`返潮`/`返祖`/`返魂`/`返樸歸真`/`返本歸元`.
+`返港`/`返臺`/`返老還童`/`返璞歸真`/`迴光返照` already had their own
+rime-cantonese entries and needed no changes.
 
-**Result**: 6 colloquial bare-返 patterns now correctly read `faan1`; 14
-formal compounds explicitly protected at `faan2`; `返學`/`返工`/`返屋企`/
-`返港`/`返臺` (already word-dict entries either way) unaffected. `cargo test`
-(173, unchanged) and `pytest` (356, +3 from this fix, +5 total this release)
-pass.
+**Result**: 6 colloquial bare-返 patterns now correctly read `faan1`; 9
+formal compounds explicitly protected at `faan2`; 5 rejected candidates
+(`返城`/`返場`/`返本`/`返鄉`/`返修`) correctly fall through to the bare `faan1`
+default; `返學`/`返工`/`返屋企`/`返港`/`返臺` (already word-dict entries either
+way) unaffected. `cargo test` (173, unchanged) and `pytest` (357, +4 from
+this fix, +6 total this release) pass.
 
 ## [2.4.1] — 2026-07-24
 

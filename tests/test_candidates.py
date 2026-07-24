@@ -429,24 +429,31 @@ def test_oral_hk_faan_bare_colloquial_default_fixed(p):
 
 
 def test_oral_hk_faan_formal_compounds_protected(p):
-    """Formal-register 返 (faan2) compounds — 返回/返還/返鄉/返程/返聘/返修/
-    返潮/返祖/返場/返魂/返本/返城/返樸歸真/返本歸元 — never had their own
-    word-dict entries and would silently break from the bare-返 faan1 default
-    above if not explicitly protected as their own word entries."""
+    """Formal-register 返 (faan2) compounds — 返回/返還/返程/返聘/返潮/返祖/
+    返魂/返樸歸真/返本歸元 — never had their own word-dict entries and would
+    silently break from the bare-返 faan1 default above if not explicitly
+    protected as their own word entries."""
     assert p.convert("返回") == "faan2 wui4"
     assert p.convert("返還") == "faan2 waan4"
-    assert p.convert("返鄉") == "faan2 hoeng1"
     assert p.convert("返程") == "faan2 cing4"
     assert p.convert("返聘") == "faan2 ping3"
-    assert p.convert("返修") == "faan2 sau1"
     assert p.convert("返潮") == "faan2 ciu4"
     assert p.convert("返祖") == "faan2 zou2"
-    assert p.convert("返場") == "faan2 coeng4"
     assert p.convert("返魂") == "faan2 wan4"
-    assert p.convert("返本") == "faan2 bun2"
-    assert p.convert("返城") == "faan2 sing4"
     assert p.convert("返樸歸真") == "faan2 pok3 gwai1 zan1"
     assert p.convert("返本歸元") == "faan2 bun2 gwai1 jyun4"
+
+
+def test_oral_hk_faan_rejected_compounds_use_bare_default(p):
+    """返鄉(HK usage is really 返鄉下)/返修(not standard vocabulary)/返場
+    (騷業用語,口語)/返本(投資術語「幾時返本」,口語)/返城(HK 罕用) were
+    considered as formal-compound candidates and rejected — they correctly
+    fall through to the bare-返 faan1 default, not faan2."""
+    assert p.convert("返城") == "faan1 sing4"
+    assert p.convert("返場") == "faan1 coeng4"
+    assert p.convert("返本") == "faan1 bun2"
+    assert p.convert("返鄉") == "faan1 hoeng1"
+    assert p.convert("返修") == "faan1 sau1"
 
 
 def test_oral_hk_faan_colloquial_and_formal_words_unaffected(p):
