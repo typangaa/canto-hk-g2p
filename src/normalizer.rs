@@ -483,20 +483,34 @@ fn expand_digits(digits: &str, next: Option<char>) -> String {
     if next == Some('年') {
         return digits_to_chars(digits);
     }
-    // date/time + floor/room/ordinal suffixes → cardinal
+    // date/time + floor/room/ordinal/currency suffixes → cardinal
     if matches!(
         next,
         Some('月') | Some('日') | Some('號') | Some('時') | Some('點') | Some('分') | Some('秒') |
         // floor / room
         Some('樓') | Some('室') | Some('層') |
         // ordinal / ranking / episode
-        Some('名') | Some('位') | Some('屆') | Some('集') | Some('季') | Some('期') | Some('班') | Some('組')
+        Some('名') | Some('位') | Some('屆') | Some('集') | Some('季') | Some('期') | Some('班') | Some('組') |
+        // currency counters (postfix, e.g. 1280蚊 → 一千二百八十蚊) — must be
+        // checked BEFORE the year heuristic below, else a 4-digit amount in
+        // 1000–2999 (very common for HKD prices) gets misread as a year.
+        Some('蚊') | Some('圓') | Some('元') | Some('毫') | Some('仙')
     ) {
         if let Ok(v) = digits.parse::<u64>() {
             return cardinal(v);
         }
     }
-    // standalone 4-digit year heuristic (1000–2999)
+    // Standalone 4-digit year heuristic (1000–2999), used only when NO
+    // context suffix matched above. This is a deliberate, imperfect
+    // default for bare digit runs: real-world bare 4-digit numbers with no
+    // unit/context overwhelmingly ARE years when they fall in this range
+    // (current + next millennium), so this range reads digit-by-digit
+    // (2723 → 二七二三). Outside the range (e.g. 4567) the same bare-number
+    // situation falls through to cardinal below — this asymmetry is known
+    // and intentional, not a bug: widening the range would misread bare
+    // round quantities like 5000 as "五零零零" instead of "五千", and
+    // removing the heuristic entirely would misread genuine bare years like
+    // 2723 as cardinal. See CHANGELOG for the decision record.
     if digits.len() == 4 {
         if let Ok(v) = digits.parse::<u32>() {
             if (1000..=2999).contains(&v) {
@@ -754,6 +768,33 @@ mod tests {
     #[test]
     fn norm_dollar() {
         assert_eq!(normalize("$50"), "五十元");
+    }
+    #[test]
+    fn norm_currency_postfix_man() {
+        assert_eq!(normalize("50蚊"), "五十蚊");
+    }
+    #[test]
+    fn norm_currency_postfix_man_4digit_in_year_range() {
+        // 1280 falls inside the 1000–2999 standalone-year heuristic range,
+        // but the 蚊 suffix must take priority so this reads as an amount
+        // (一千二百八十蚊), not a misread year (一二八零蚊).
+        assert_eq!(normalize("1280蚊"), "一千二百八十蚊");
+    }
+    #[test]
+    fn norm_currency_postfix_jyun() {
+        assert_eq!(normalize("1500圓"), "一千五百圓");
+    }
+    #[test]
+    fn norm_currency_postfix_hou_sin() {
+        assert_eq!(normalize("3毫"), "三毫");
+        assert_eq!(normalize("5仙"), "五仙");
+    }
+    #[test]
+    fn norm_bare_4digit_year_heuristic_unaffected() {
+        // No currency/context suffix — the existing bare-number heuristic
+        // (1000–2999 → digit-by-digit, else cardinal) is unchanged.
+        assert_eq!(normalize("2723"), "二七二三");
+        assert_eq!(normalize("4567"), "四千五百六十七");
     }
     #[test]
     fn norm_passthrough() {

@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] — 2026-07-24
+
+### Fixed — postfix currency counters (蚊/圓/元/毫/仙) misread as years
+
+`p.convert("1280蚊")` ("1280 dollars") resolved the number as `jat1 ji6 baat3
+ling4` (逐位 "one-two-eight-zero") instead of the correct cardinal
+`jat1 cin1 ji6 baak3 baat3 sap6` ("一千二百八十", one thousand two hundred
+eighty).
+
+**Root cause.** `normalizer::expand_digits()`'s context-suffix table (which
+forces cardinal reading for date/time/floor/ordinal suffixes like 月/日/樓/名)
+never listed the postfix currency counters 蚊/圓/元/毫/仙. A bare 4-digit
+number with no recognised suffix falls into the standalone-year heuristic
+(1000–2999 → digit-by-digit, since bare numbers in that range are usually
+years) — so `1280蚊` fell straight past the currency case into the year
+heuristic and was misread as a year fragment.
+
+**Fix.** Added `蚊`/`圓`/`元`/`毫`/`仙` to the context-suffix table, checked
+before the year heuristic — matching the existing precedent for HK$/$-prefixed
+amounts, which already read as cardinal. Scoped to exactly this bug: bare
+4-digit numbers with **no** currency suffix are unaffected (`2723` still reads
+digit-by-digit as a likely year, `4567` still reads cardinal as a likely
+quantity) — this asymmetry for context-free bare numbers is a pre-existing,
+deliberate heuristic trade-off (documented inline in
+`normalizer.rs::expand_digits`), not something this fix changes.
+
+**Result**: `1280蚊` → `一千二百八十蚊`, `1500圓` → `一千五百圓`, `3毫`/`5仙`
+unaffected (too short to hit the year heuristic anyway, already correct).
+`cargo test` (173, +5) and `pytest` (351, +4) pass.
+
 ## [2.4.0] — 2026-07-23
 
 ### Fixed — separable verb-object compounds split by aspect markers (離合詞)

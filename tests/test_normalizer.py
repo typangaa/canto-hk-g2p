@@ -91,6 +91,29 @@ def test_dollar_currency(p):
     assert "jyun4" in result
 
 
+def test_currency_postfix_man_4digit(p):
+    # 1280 falls inside the 1000-2999 standalone-year heuristic range, but
+    # the 蚊 (postfix currency counter) suffix must take priority so this
+    # reads as an amount (一千二百八十蚊), not a misread year.
+    assert p.convert("1280蚊") == "jat1 cin1 ji6 baak3 baat3 sap6 man1"
+
+
+def test_currency_postfix_jyun_4digit(p):
+    assert p.convert("1500圓") == "jat1 cin1 ng5 baak3 jyun4"
+
+
+def test_currency_postfix_hou_sin(p):
+    assert p.convert("3毫") == "saam1 hou4"
+    assert p.convert("5仙") == "ng5 sin1"
+
+
+def test_bare_4digit_year_heuristic_unaffected(p):
+    # No currency/context suffix — the bare-number heuristic (1000-2999 ->
+    # digit-by-digit, else cardinal) is unchanged by the currency fix.
+    assert p.convert("2723") == "ji6 cat1 ji6 saam1"
+    assert p.convert("4567") == "sei3 cin1 ng5 baak3 luk6 sap6 cat1"
+
+
 def test_time(p):
     result = p.convert("下午3時15分")
     assert "saam1" in result
