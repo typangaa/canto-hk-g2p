@@ -402,7 +402,12 @@ mod tests {
     fn test_convert_resolves_separable_compound_across_aspect_marker() {
         let dir = make_data_dir_with_separable(
             &[("瞓覺", "fan3 gaau3")],
-            &[("覺", "gok3"), ("瞓", "fan3"), ("緊", "gan2"), ("佢", "keoi5")],
+            &[
+                ("覺", "gok3"),
+                ("瞓", "fan3"),
+                ("緊", "gan2"),
+                ("佢", "keoi5"),
+            ],
             &[("瞓覺", "fan3 gaau3")],
         );
         let p = Pipeline::from_dir(&dir).unwrap();
@@ -413,7 +418,12 @@ mod tests {
     fn test_convert_detailed_reports_separable_compound_source() {
         let dir = make_data_dir_with_separable(
             &[("瞓覺", "fan3 gaau3")],
-            &[("覺", "gok3"), ("瞓", "fan3"), ("緊", "gan2"), ("佢", "keoi5")],
+            &[
+                ("覺", "gok3"),
+                ("瞓", "fan3"),
+                ("緊", "gan2"),
+                ("佢", "keoi5"),
+            ],
             &[("瞓覺", "fan3 gaau3")],
         );
         let p = Pipeline::from_dir(&dir).unwrap();
@@ -459,7 +469,12 @@ mod tests {
         // override pass simply never fires (pre-fix behavior unchanged).
         let dir = make_data_dir(
             &[("瞓覺", "fan3 gaau3")],
-            &[("覺", "gok3"), ("瞓", "fan3"), ("緊", "gan2"), ("佢", "keoi5")],
+            &[
+                ("覺", "gok3"),
+                ("瞓", "fan3"),
+                ("緊", "gan2"),
+                ("佢", "keoi5"),
+            ],
             None,
             None,
         );

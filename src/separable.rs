@@ -51,8 +51,7 @@ pub fn resolve_separable_overrides(
             continue;
         };
         let mut parts = reading.split(' ');
-        if let (Some(v_reading), Some(n_reading), None) =
-            (parts.next(), parts.next(), parts.next())
+        if let (Some(v_reading), Some(n_reading), None) = (parts.next(), parts.next(), parts.next())
         {
             overrides.insert(i, v_reading.to_owned());
             overrides.insert(i + 2, n_reading.to_owned());
