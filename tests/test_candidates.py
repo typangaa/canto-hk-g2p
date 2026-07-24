@@ -414,6 +414,56 @@ def test_oral_hk_ng_dik_siblings_unaffected(p):
     assert p.convert("血滴子") == "hyut3 dik1 zi2"
 
 
+def test_oral_hk_faan_bare_colloquial_default_fixed(p):
+    """Bare 返 with no word-dict match — after negation, a time question, an
+    aspect marker, or a time adverb — is overwhelmingly the colloquial faan1
+    "go/come back" sense in spoken HK Cantonese, not the faan2 "書面返回"
+    sense rime-cantonese/ToJyutping both rank first by default. Not
+    corpus-verified (no local HKCanCor access) — see data/oral_hk.tsv note."""
+    assert p.convert("佢未返") == "keoi5 mei6 faan1"
+    assert p.convert("幾時返") == "gei2 si4 faan1"
+    assert p.convert("佢返未") == "keoi5 faan1 mei6"
+    assert p.convert("我遲啲返") == "ngo5 ci4 di1 faan1"
+    assert p.convert("佢已經返咗") == "keoi5 ji5 ging1 faan1 zo2"
+    assert p.convert("佢琴日冇返") == "keoi5 kam4 jat6 mou5 faan1"
+
+
+def test_oral_hk_faan_formal_compounds_protected(p):
+    """Formal-register 返 (faan2) compounds — 返回/返還/返鄉/返程/返聘/返修/
+    返潮/返祖/返場/返魂/返本/返城/返樸歸真/返本歸元 — never had their own
+    word-dict entries and would silently break from the bare-返 faan1 default
+    above if not explicitly protected as their own word entries."""
+    assert p.convert("返回") == "faan2 wui4"
+    assert p.convert("返還") == "faan2 waan4"
+    assert p.convert("返鄉") == "faan2 hoeng1"
+    assert p.convert("返程") == "faan2 cing4"
+    assert p.convert("返聘") == "faan2 ping3"
+    assert p.convert("返修") == "faan2 sau1"
+    assert p.convert("返潮") == "faan2 ciu4"
+    assert p.convert("返祖") == "faan2 zou2"
+    assert p.convert("返場") == "faan2 coeng4"
+    assert p.convert("返魂") == "faan2 wan4"
+    assert p.convert("返本") == "faan2 bun2"
+    assert p.convert("返城") == "faan2 sing4"
+    assert p.convert("返樸歸真") == "faan2 pok3 gwai1 zan1"
+    assert p.convert("返本歸元") == "faan2 bun2 gwai1 jyun4"
+
+
+def test_oral_hk_faan_colloquial_and_formal_words_unaffected(p):
+    """Colloquial faan1 words (返學/返工/返屋企/返嚟) and formal faan2 words
+    that already had their own rime-cantonese entries (返港/返臺/返老還童/
+    返璞歸真/迴光返照) must keep resolving correctly around the bare-返
+    default flip."""
+    assert p.convert("返學") == "faan1 hok6"
+    assert p.convert("返工") == "faan1 gung1"
+    assert p.convert("返屋企") == "faan1 uk1 kei2"
+    assert p.convert("返港") == "faan2 gong2"
+    assert p.convert("返臺") == "faan2 toi4"
+    assert p.convert("返老還童") == "faan2 lou5 waan4 tung4"
+    assert p.convert("返璞歸真") == "faan2 pok3 gwai1 zan1"
+    assert p.convert("迴光返照") == "wui4 gwong1 faan2 ziu3"
+
+
 # ── Batch ─────────────────────────────────────────────────────────────────
 
 def test_batch_matches_per_text_calls(p):

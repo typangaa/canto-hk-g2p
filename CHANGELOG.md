@@ -32,8 +32,40 @@ cross-checked and found to already be correct — no change needed.
 
 **Result**: `唔見` → `m4 gin3` (was `ng5 gin3`), `滴水` → `dik6 seoi2` (was
 `dik1 seoi2`), and 16 other affected words corrected; siblings using the
-genuinely-correct alternate readings are unaffected. `cargo test` (173,
-unchanged) and `pytest` (353, +2) pass.
+genuinely-correct alternate readings are unaffected.
+
+### Fixed — bare 返 char-fallback default (書面 faan2 → 口語 faan1)
+
+Also found via the S22 spot check: bare `返` with no word-dict match (after
+negation `佢未返`, a time question `幾時返`, an aspect marker `佢返未`/`佢已經
+返咗`, or a time adverb `我遲啲返`) resolved to the formal-register `faan2`
+("返回" sense) instead of the colloquial `faan1` ("翻去/翻嚟" sense) that
+dominates spoken HK Cantonese in this bare-verb position.
+
+**Root cause.** Unlike the 唔/滴 bugs above, this is not a source-data
+contradiction — rime-cantonese and ToJyutping both consistently rank `faan2`
+ahead of `faan1` for solo `返`, and our char-fallback policy uses the
+rank-0 candidate. The ranking itself is simply a mismatch for this project's
+target register (spoken HK Cantonese) in the common bare-verb-no-object
+construction. **Not corpus-verified** (no local HKCanCor access this
+session) — a judgment call from common sentence patterns, documented as such
+in `data/oral_hk.tsv`.
+
+**Fix.** Added `返 → faan1` as a char-level `oral_hk.tsv` override. Discovered
+mid-fix that this silently broke 11 formal-register `返`-compounds that had
+never had their own word-dict entries (返回/返還/返鄉/返程/返聘/返修/返潮/返祖/
+返場/返魂/返本/返城/返樸歸真/返本歸元) — none of rime-cantonese, ToJyutping, or
+our own dict had ever listed them as words, so they were silently relying on
+the very same char-level default this fix flips. Added them as explicit
+protected word entries so longest-match segmentation finds the whole word
+first. `返港`/`返臺`/`返老還童`/`返璞歸真`/`迴光返照` already had their own
+entries and needed no changes.
+
+**Result**: 6 colloquial bare-返 patterns now correctly read `faan1`; 14
+formal compounds explicitly protected at `faan2`; `返學`/`返工`/`返屋企`/
+`返港`/`返臺` (already word-dict entries either way) unaffected. `cargo test`
+(173, unchanged) and `pytest` (356, +3 from this fix, +5 total this release)
+pass.
 
 ## [2.4.1] — 2026-07-24
 

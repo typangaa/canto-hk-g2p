@@ -103,3 +103,39 @@
 滴里嘟嚕	dik6 lei5 dou1 lou1
 水滴石穿	seoi2 dik6 sek6 cyun1
 倒吊冇滴墨水	dou3 diu3 mou5 dik6 mak6 seoi2
+# 返 (bare, no word-dict match): rime-cantonese and ToJyutping both rank
+# faan2 (書面「返回」sense) ahead of faan1 (口語「翻去/翻嚟」sense) for the
+# solo char-fallback case. In spoken HK Cantonese, bare 返 with no following
+# object — after negation (佢未返/佢冇返), a time question (幾時返/幾點返),
+# an aspect marker (佢返未/佢已經返咗), or a time adverb (我遲啲返) — is
+# overwhelmingly the faan1 "go/come back" sense; faan2 rarely stands alone.
+# Multi-char words that ARE faan2 (返回/返港/返臺/返抵) already have their own
+# word-dict entries and are unaffected by this char-level default flip.
+# NOTE: unlike the 唔/滴 fixes above, this is not corpus-verified (no local
+# HKCanCor access this session) — a judgment call from common bare-verb
+# sentence patterns, not a source-data contradiction. Revisit with HKCanCor
+# if this turns out too broad.
+返	faan1
+# Formal-register 返 (faan2) compounds — NONE of these existed as word-dict
+# entries before (neither rime-cantonese nor ToJyutping's trie), so they were
+# silently relying on the same char-level default just flipped above (返 +
+# faan2-by-default). Protecting them explicitly as their own word entries so
+# longest-match segmentation finds the whole word before ever falling back to
+# solo 返. This list is a closed, enumerable set of real formal vocabulary —
+# not an attempt to cover every conceivable 返X compound. 返老還童/返璞歸真/
+# 迴光返照/回光返照 already had their own rime-cantonese entries and needed no
+# protection.
+返回	faan2 wui4
+返還	faan2 waan4
+返鄉	faan2 hoeng1
+返程	faan2 cing4
+返聘	faan2 ping3
+返修	faan2 sau1
+返潮	faan2 ciu4
+返祖	faan2 zou2
+返場	faan2 coeng4
+返魂	faan2 wan4
+返本	faan2 bun2
+返城	faan2 sing4
+返樸歸真	faan2 pok3 gwai1 zan1
+返本歸元	faan2 bun2 gwai1 jyun4
