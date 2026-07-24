@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.2] — 2026-07-24
+
+### Fixed — 唔/滴 mis-tagged tone entries inherited from rime-cantonese
+
+Found via canto-tts S22 test-set spot check: `唔` (negation particle, always
+`m4`) resolved to `ng5` inside several multi-char words, and `滴` resolved to
+the wrong homograph tone (`dik1` instead of `dik6`) in several others.
+
+**Root cause.** `唔` has no legitimate `ng-` reading in Cantonese — it's a
+data-entry typo scattered across 7 of the ~230 rime-cantonese word entries
+containing `唔` (唔見/唔爽/唔應該/唔小心/唔想去/開唔開心/唔食人間菸火), plus 4
+more tagged `m3` instead of `m4` (受唔起/玩唔起/唔知米價/畫公仔唔使畫出腸/畫公仔
+唔駛畫出腸). Separately, 6 of rime-cantonese's `滴`-containing words
+(滴水/血滴/饞涎欲滴/滴里嘟嚕/水滴石穿/倒吊冇滴墨水) use the wrong `滴` homograph
+reading (`dik1`, the "coquettish/drip-drip" reading as in 嬌滴滴) where the
+"a drop of liquid" sense (`dik6`) is correct.
+
+**Fix.** Cross-verified every affected word against ToJyutping (CanCLID,
+independent source) and added 18 `oral_hk.tsv` overrides for the confirmed
+errors. Two lookalike cases were investigated and found to be **already
+correct** and left untouched: `差唔耐` ("almost/nearly") genuinely uses `ng4`
+as an idiom-specific reading (both rime-cantonese and ToJyutping agree), and
+`嬌滴滴`/`血滴子` genuinely use `滴`'s `dik1` homograph. Two other reported
+cases (`由得` → `jau2 dak1`, standalone `返` → `faan2`) were also
+cross-checked and found to already be correct — no change needed.
+
+**Result**: `唔見` → `m4 gin3` (was `ng5 gin3`), `滴水` → `dik6 seoi2` (was
+`dik1 seoi2`), and 16 other affected words corrected; siblings using the
+genuinely-correct alternate readings are unaffected. `cargo test` (173,
+unchanged) and `pytest` (353, +2) pass.
+
 ## [2.4.1] — 2026-07-24
 
 ### Fixed — postfix currency counters (蚊/圓/元/毫/仙) misread as years

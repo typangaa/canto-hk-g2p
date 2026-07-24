@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "canto-hk-g2p"
-version = "2.4.1"
+version = "2.4.2"
 description = "Fast Cantonese text-to-phoneme (G2P) converter — Jyutping with tone numbers"
 readme = "README.md"
 license = { text = "Apache-2.0" }

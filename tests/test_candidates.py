@@ -384,6 +384,36 @@ def test_oral_hk_zoek_zai_tone_fix(p):
     assert p.convert_candidates("雀仔")[0][4] == "oral_hk"
 
 
+def test_oral_hk_ng_dik_mistagged_entries_fixed(p):
+    """rime-cantonese's jyut6ping3.words.dict.yaml has plain data-entry
+    errors (not colloquial-tone variants) for these words: 唔 (negation
+    particle) has no legitimate ng- reading, and these words' 滴 syllable
+    is tagged with the wrong homograph reading. Cross-verified against
+    ToJyutping (CanCLID, independent source) — see data/oral_hk.tsv."""
+    assert p.convert("唔見") == "m4 gin3"
+    assert p.convert("唔爽") == "m4 song2"
+    assert p.convert("唔應該") == "m4 jing1 goi1"
+    assert p.convert("唔小心") == "m4 siu2 sam1"
+    assert p.convert("唔想去") == "m4 soeng2 heoi3"
+    assert p.convert("開唔開心") == "hoi1 m4 hoi1 sam1"
+    assert p.convert("受唔起") == "sau6 m4 hei2"
+    assert p.convert("玩唔起") == "waan2 m4 hei2"
+    assert p.convert("滴水") == "dik6 seoi2"
+    assert p.convert("血滴") == "hyut3 dik6"
+    assert p.convert_candidates("唔見")[0][4] == "oral_hk"
+    assert p.convert_candidates("滴水")[0][4] == "oral_hk"
+
+
+def test_oral_hk_ng_dik_siblings_unaffected(p):
+    """差唔耐 ("almost/nearly") is a genuine idiom-specific ng4 reading —
+    both rime-cantonese and ToJyutping independently agree — so it is left
+    untouched, unlike the negation-particle 唔 bugs above. 嬌滴滴/血滴子
+    genuinely use 滴's dik1 homograph reading, unlike the dik6 bugs above."""
+    assert p.convert("差唔耐") == "caa1 ng4 noi6"
+    assert p.convert("嬌滴滴") == "giu1 dik1 dik1"
+    assert p.convert("血滴子") == "hyut3 dik1 zi2"
+
+
 # ── Batch ─────────────────────────────────────────────────────────────────
 
 def test_batch_matches_per_text_calls(p):

@@ -77,3 +77,29 @@
 # reading zoek3 zai2; HKCanCor shows zoek2 zai2 (same colloquial "zoek2"
 # reading as 麻雀/孔雀 above) in every occurrence.
 雀仔	zoek2 zai2
+# ── rime-cantonese mis-tagged 唔/滴 word entries (2026-07-24) ─────────────────
+# These are plain data-entry errors in rime-cantonese's jyut6ping3.words.dict,
+# not colloquial-tone variants: 唔 (negation particle) has no legitimate ng-
+# reading, and these words' 滴 syllable is tagged with the wrong homograph
+# reading. Cross-verified against ToJyutping (CanCLID, independent source) —
+# every row below matches ToJyutping's get_jyutping_list() output exactly.
+# Contrast with 差唔耐 (caa1 ng4 noi6), which rime-cantonese AND ToJyutping
+# both agree is a genuine idiom-specific ng4 reading — left untouched.
+唔見	m4 gin3
+唔爽	m4 song2
+唔應該	m4 jing1 goi1
+唔小心	m4 siu2 sam1
+唔想去	m4 soeng2 heoi3
+開唔開心	hoi1 m4 hoi1 sam1
+唔食人間菸火	m4 sik6 jan4 gaan1 jin1 fo2
+受唔起	sau6 m4 hei2
+玩唔起	waan2 m4 hei2
+唔知米價	m4 zi1 mai5 gaa3
+畫公仔唔使畫出腸	waak6 gung1 zai2 m4 sai2 waak6 ceot1 coeng2
+畫公仔唔駛畫出腸	waak6 gung1 zai2 m4 sai2 waak6 ceot1 coeng2
+滴水	dik6 seoi2
+血滴	hyut3 dik6
+饞涎欲滴	caam4 jin4 juk6 dik6
+滴里嘟嚕	dik6 lei5 dou1 lou1
+水滴石穿	seoi2 dik6 sek6 cyun1
+倒吊冇滴墨水	dou3 diu3 mou5 dik6 mak6 seoi2
