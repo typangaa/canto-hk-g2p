@@ -473,7 +473,7 @@ def test_oral_hk_faan_colloquial_and_formal_words_unaffected(p):
 
 def test_address_sandhi_surname_before_sir(p):
     """黃sir/陳sir/etc: a genuine Cantonese 姓氏稱呼變調 (surname address tone
-    sandhi), not a polyphone-selection bug — a 陽 tone (4 陽平 or 6 陽去)
+    sandhi), not a polyphone-selection bug — a 陽 tone (4 陽平 or 6 陽去/陽入)
     brightens to 陰上 (tone 2) before the address term "sir". Verified
     against an independent source (信報教育, edu.hkej.com/php/article.detail.php?aid=60291):
     陳(can4)->can2, 黃(wong4)->wong2, 鄭(zeng6)->zeng2, 趙(ziu6)->ziu2,
@@ -486,6 +486,25 @@ def test_address_sandhi_surname_before_sir(p):
     assert p.convert("梁sir") == "loeng2 sir"
     assert p.convert_candidates("黃sir")[0][3] == "certain"
     assert p.convert_candidates("黃sir")[0][4] == "address_sandhi"
+
+
+def test_address_sandhi_full_reference_table(p):
+    """Full cross-check against an independent "姓氏稱呼變調對照表"
+    (廣東話文化研究社) covering all three Jyutping tone digits this sandhi
+    can apply to (4 陽平, 6 陽去, and 6 陽入 — Jyutping's numbering scheme
+    reuses digit 6 for both 陽去 and 陽入, so the same digit-only rule
+    correctly covers 陸/莫 too without any special-casing)."""
+    assert p.convert("林sir") == "lam2 sir"
+    assert p.convert("胡sir") == "wu2 sir"
+    assert p.convert("徐sir") == "ceoi2 sir"
+    assert p.convert("余sir") == "jyu2 sir"
+    assert p.convert("馮sir") == "fung2 sir"
+    assert p.convert("盧sir") == "lou2 sir"
+    assert p.convert("何sir") == "ho2 sir"
+    assert p.convert("廖sir") == "liu2 sir"
+    assert p.convert("陸sir") == "luk2 sir"  # 陽入, still Jyutping tone 6
+    assert p.convert("莫sir") == "mok2 sir"  # 陽入, still Jyutping tone 6
+    assert p.convert("黎sir") == "lai2 sir"
 
 
 def test_address_sandhi_case_insensitive_and_nickname(p):

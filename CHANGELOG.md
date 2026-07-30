@@ -12,11 +12,17 @@ Follow-up to the v2.4.2 polyphone fixes: checking `黃sir`/`陳sir` found the
 segmentation and readings themselves were already correct (`wong4 sir`,
 `can4 sir`), but a real Cantonese phenomenon was missing — addressing
 someone by surname + "sir" (as HK students/subordinates address a
-teacher/officer) brightens the surname's citation tone: a 陽 tone (4 陽平 or
-6 陽去) becomes 陰上 (tone 2). Verified against an independent source
-([信報教育](https://edu.hkej.com/php/article.detail.php?aid=60291)):
-陳(`can4`)→`can2`, 黃(`wong4`)→`wong2`, 鄭(`zeng6`)→`zeng2`,
-趙(`ziu6`)→`ziu2`, 鄧(`dang6`)→`dang2`, 梁(`loeng4`)→`loeng2`.
+teacher/officer) brightens the surname's citation tone: a 陽 tone (Jyutping
+digit 4 陽平, or 6 — covering both 陽去 and 陽入, which share digit 6 in
+Jyutping's numbering) becomes 陰上 (tone 2). Verified against two
+independent sources — [信報教育](https://edu.hkej.com/php/article.detail.php?aid=60291)
+and a fuller reference table (廣東話文化研究社) covering 14 surnames across
+all three affected tone categories, including 陽入 (`陸`/`莫`), confirming
+the digit-only rule needs no special-casing for entering tone: 陳(`can4`)→
+`can2`, 黃(`wong4`)→`wong2`, 鄭(`zeng6`)→`zeng2`, 林(`lam4`)→`lam2`,
+胡(`wu4`)→`wu2`, 徐(`ceoi4`)→`ceoi2`, 余(`jyu4`)→`jyu2`, 馮(`fung4`)→`fung2`,
+盧(`lou4`)→`lou2`, 何(`ho4`)→`ho2`, 廖(`liu6`)→`liu2`, 陸(`luk6`)→`luk2`,
+莫(`mok6`)→`mok2`, 黎(`lai4`)→`lai2`.
 
 This is a tone-sandhi phenomenon, not a polyphone-selection bug, and
 CLAUDE.md's locked v1 scope explicitly defers tone sandhi to a future

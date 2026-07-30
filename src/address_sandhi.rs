@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
 /// Cantonese "surname address" tone sandhi (姓氏稱呼變調): a single-character
-/// token whose 陽 tone (4 陽平 or 6 陽去) is immediately followed by the
-/// English loanword "sir" is read with 陰上 (tone 2) instead of its citation
-/// tone — 黃sir -> wong2 sir (not wong4), 陳sir -> can2 sir (not can4), 鄭sir
-/// -> zing2 sir (not zeng6). This is a real, independently documented
+/// token whose 陽 tone (Jyutping digit 4 陽平, or 6 — covering both 陽去 and
+/// 陽入, which share digit 6 in Jyutping's numbering) is immediately
+/// followed by the English loanword "sir" is read with 陰上 (tone 2) instead
+/// of its citation tone — 黃sir -> wong2 sir (not wong4), 陳sir -> can2 sir
+/// (not can4), 鄭sir -> zeng2 sir (not zeng6), 陸sir -> luk2 sir (陽入, not
+/// luk6). This is a real, independently documented
 /// Cantonese phenomenon (not a polyphone-selection bug): "兩個陽平聲連讀唔順
 /// 口", so the low/dark tone brightens to a rising tone 2 in this address
 /// construction. The same sandhi also applies to "阿X"/"老X"/"X伯" address
@@ -88,6 +90,16 @@ mod tests {
         let r = readings(&["zeng6", "sir"]);
         let overrides = resolve_address_sandhi(&tokens, &r);
         assert_eq!(overrides.get(&0), Some(&"zeng2".to_string()));
+    }
+
+    #[test]
+    fn test_yang_jap_tone6_brightens_before_sir() {
+        // 陸sir -> luk2 sir (陽入, still Jyutping tone digit 6 -- same rule
+        // as 陽去 covers it with no special-casing).
+        let tokens = toks(&["陸", "sir"]);
+        let r = readings(&["luk6", "sir"]);
+        let overrides = resolve_address_sandhi(&tokens, &r);
+        assert_eq!(overrides.get(&0), Some(&"luk2".to_string()));
     }
 
     #[test]
