@@ -1,0 +1,21 @@
+# romanized_slang.tsv — ASCII/numeral-substitution spellings of Cantonese
+# slang phrases (leetspeak-style shorthand common in HK forums/social
+# media), mapped to their canonical CJK spelling.
+# License: Apache-2.0 (canto-g2p project, hand-curated)
+#
+# Format: ascii_form (lowercase)<TAB>canonical_cjk
+#
+# Matched case-insensitively as a whole ASCII-alnum run (word-boundary
+# gated by adjacent non-ASCII-alnum characters) BEFORE number/date
+# normalization runs — otherwise a bare trailing digit like "9" gets read
+# as a cardinal number before this pass ever sees it. The canonical_cjk
+# spelling must already resolve correctly via rime-cantonese / ToJyutping /
+# oral_hk.tsv — its reading is read verbatim from word_entries at build
+# time, so it can never drift out of sync.
+#
+# on9 ("戇鳩", ngong6 gau1): common HK internet/forum leetspeak for a
+# vulgar-slang "stupid/idiotic" term — "on" approximates 戇 (ngong6, with
+# the ng- onset dropped, as is common in casual romanization) and "9"
+# (gau2) substitutes for 鳩's sound rather than being read as the cardinal
+# number nine.
+on9	戇鳩

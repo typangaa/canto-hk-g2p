@@ -1,6 +1,6 @@
 use crate::dict::Dict;
 use crate::user_dict::UserDict;
-use crate::{address_sandhi, g2p, normalizer, segment, separable};
+use crate::{address_sandhi, g2p, normalizer, romanized_slang, segment, separable};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -33,6 +33,11 @@ pub struct Pipeline {
     /// directory — older/custom data dirs still work, this override pass
     /// then simply never fires.
     separable: Option<Dict>,
+    /// ASCII/numeral leetspeak-slang alias table (e.g. "on9" -> 戇鳩). `None`
+    /// if `romanized_slang.bin` is missing from the data directory —
+    /// older/custom data dirs still work, this substitution pass then
+    /// simply never fires.
+    romanized_slang: Option<Dict>,
     pub punc_norm: bool,
 }
 
@@ -100,6 +105,7 @@ impl Pipeline {
         let word_source = Dict::load(&dir.join("word_source.bin")).ok();
         let char_source = Dict::load(&dir.join("char_source.bin")).ok();
         let separable = Dict::load(&dir.join("separable.bin")).ok();
+        let romanized_slang = Dict::load(&dir.join("romanized_slang.bin")).ok();
         Ok(Pipeline {
             word_dict,
             char_dict,
@@ -111,15 +117,17 @@ impl Pipeline {
             word_source,
             char_source,
             separable,
+            romanized_slang,
             punc_norm,
         })
     }
 
     fn tokens_for(&self, text: &str) -> Vec<String> {
+        let slang_norm = romanized_slang::substitute(text, self.romanized_slang.as_ref());
         let pre = if self.punc_norm {
-            normalizer::punc_norm(text)
+            normalizer::punc_norm(&slang_norm)
         } else {
-            text.to_owned()
+            slang_norm
         };
         let normalized = normalizer::normalize(&pre);
         segment::segment_owned(&normalized, &self.word_dict, &self.user_dict)
@@ -506,6 +514,42 @@ mod tests {
         );
         let p = Pipeline::from_dir(&dir).unwrap();
         assert_eq!(p.convert("佢瞓緊覺"), "keoi5 fan3 gan2 gok3");
+    }
+
+    /// Builds a data dir with word.bin/char.bin plus a romanized_slang.bin
+    /// sidecar (no other optional sidecars) — for testing the leetspeak
+    /// slang-alias substitution pass.
+    fn make_data_dir_with_romanized_slang(
+        word: &[(&str, &str)],
+        chars: &[(&str, &str)],
+        romanized_slang: &[(&str, &str)],
+    ) -> PathBuf {
+        let dir = make_data_dir(word, chars, None, None);
+        write_bin(&dir.join("romanized_slang.bin"), romanized_slang);
+        dir
+    }
+
+    // ── romanized slang (leetspeak aliases) ─────────────────────────────────
+
+    #[test]
+    fn test_convert_resolves_romanized_slang_alias() {
+        let dir = make_data_dir_with_romanized_slang(
+            &[],
+            &[("戇", "ngong6"), ("鳩", "gau1")],
+            &[("on9", "戇鳩")],
+        );
+        let p = Pipeline::from_dir(&dir).unwrap();
+        assert_eq!(p.convert("on9"), "ngong6 gau1");
+    }
+
+    #[test]
+    fn test_convert_without_romanized_slang_bin_unaffected() {
+        // No romanized_slang.bin at all — old data dirs keep working, and
+        // the substitution pass simply never fires ("on9" stays literal
+        // ASCII, same as any other unrecognized English/number token).
+        let dir = make_data_dir(&[], &[], None, None);
+        let p = Pipeline::from_dir(&dir).unwrap();
+        assert_eq!(p.convert("on9"), "on 九");
     }
 
     // ── convert_candidates ───────────────────────────────────────────────────

@@ -6,6 +6,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.5.0] — 2026-07-30
 
+### Added — "on9" romanized-slang alias (戇鳩)
+
+`on9` is common HK forum/social-media leetspeak for 戇鳩 (`ngong6 gau1`,
+vulgar slang for "stupid/idiotic") — "on" approximates 戇 (ng- onset
+dropped, as is common in casual romanization) and "9" (`gau2`) substitutes
+for 鳩's sound. Previously this passed through as literal English "on" plus
+the digit "9" read as the cardinal number nine (`on gau2`, from the numeral
+default reading) — wrong on both counts.
+
+**Fix.** New `data/romanized_slang.tsv` — a small table of ASCII/numeral
+leetspeak spellings mapped to their canonical CJK spelling, matched
+case-insensitively as a whole ASCII-alnum run (word-boundary gated: "on99"
+and "onon9" don't match) and substituted with the canonical CJK text
+*before* number normalization ever sees the trailing digit. New
+`src/romanized_slang.rs` (stateless substitution pass, new optional
+`romanized_slang.bin` sidecar — absent in older/custom data dirs, the pass
+then simply never fires) wired into `Pipeline::tokens_for()` ahead of
+punctuation/number normalization.
+
+**Result**: `on9` → `ngong6 gau1` (was `on gau2`); `ON9`/`On9` also match
+(case-insensitive); `on99`/`onon9`/other unrelated ASCII+digit tokens
+(`hello123`) are unaffected.
+
 ### Added — 姓氏稱呼變調 (surname address tone sandhi) before "sir"
 
 Follow-up to the v2.4.2 polyphone fixes: checking `黃sir`/`陳sir` found the

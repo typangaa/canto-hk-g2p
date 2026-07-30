@@ -508,7 +508,7 @@ cargo test
 python3 -m pytest tests/ -v
 ```
 
-All 181 Rust unit tests + 361 Python integration tests (542 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` / `convert_detailed_batch()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the Candidates API (`convert_candidates()` / `convert_candidates_batch()`) including its `confidence` and `source` tags.
+All 190 Rust unit tests + 363 Python integration tests (553 total) should pass. The test suite covers basic G2P correctness, polyphone disambiguation, English passthrough, code-switching, punctuation normalisation, number/date/unit/currency/fraction/score normalization, batch processing, `convert_detailed()` / `convert_detailed_batch()` output structure, IPA conversion (all initials, finals, tones, syllabic consonants, CMU English lookup), `user_dict` runtime overrides, and the Candidates API (`convert_candidates()` / `convert_candidates_batch()`) including its `confidence` and `source` tags.
 
 ---
 

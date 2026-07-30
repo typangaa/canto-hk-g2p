@@ -33,6 +33,7 @@ ORAL_HK_TSV = DATA_DIR / "oral_hk.tsv"
 VARIANT_WORDS_TSV = DATA_DIR / "variant_words.tsv"
 TONE_SANDHI_WORDS_TSV = DATA_DIR / "tone_sandhi_words.tsv"
 SEPARABLE_WORDS_TSV = DATA_DIR / "separable_words.tsv"
+ROMANIZED_SLANG_TSV = DATA_DIR / "romanized_slang.tsv"
 
 RIME_FILES: List[Path] = [
     RAW_DIR / "rime-cantonese" / "jyut6ping3.chars.dict.yaml",
@@ -57,6 +58,7 @@ OUT_CHAR_CANDIDATES_CONFIDENCE_BIN = PKG_DATA_DIR / "char_candidates_confidence.
 OUT_WORD_SOURCE_BIN = PKG_DATA_DIR / "word_source.bin"
 OUT_CHAR_SOURCE_BIN = PKG_DATA_DIR / "char_source.bin"
 OUT_SEPARABLE_BIN = PKG_DATA_DIR / "separable.bin"
+OUT_ROMANIZED_SLANG_BIN = PKG_DATA_DIR / "romanized_slang.bin"
 CMUDICT_SRC = RAW_DIR / "cmudict" / "cmudict.dict"
 CMUDICT_DST = PKG_DATA_DIR / "cmudict.dict"
 
@@ -166,6 +168,37 @@ def load_separable_words(path: Path) -> Dict[str, str]:
                 result[word] = note
 
     print(f"[separable] loaded {len(result):,} entries from {path.name}")
+    return result
+
+
+def load_romanized_slang(path: Path) -> Dict[str, str]:
+    """
+    Load romanized_slang.tsv — ASCII/numeral leetspeak spellings of
+    Cantonese slang phrases (e.g. "on9" -> 戇鳩).
+    Format:  ascii_form (lowercase)<TAB>canonical_cjk
+    Skips lines starting with '#' or blank lines. Resolution (copying the
+    canonical spelling's jyutping) happens in main(), after word_entries is
+    fully built, since the canonical spelling must already be resolved.
+    """
+    result: Dict[str, str] = {}
+    if not path.exists():
+        print(f"[WARN] romanized_slang.tsv not found: {path}", file=sys.stderr)
+        return result
+
+    with open(path, encoding="utf-8") as fh:
+        for lineno, raw in enumerate(fh, 1):
+            line = raw.rstrip("\n\r")
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 2:
+                print(f"[WARN] romanized_slang.tsv:{lineno}: bad line: {line!r}", file=sys.stderr)
+                continue
+            ascii_form, canonical = parts[0].strip().lower(), parts[1].strip()
+            if ascii_form and canonical:
+                result[ascii_form] = canonical
+
+    print(f"[slang]     loaded {len(result):,} entries from {path.name}")
     return result
 
 
@@ -910,6 +943,32 @@ def main() -> None:
             )
         separable_dict[word] = reading
 
+    # ------------------------------------------------------------------
+    # Step 5d: Build romanized_slang.bin (leetspeak aliases, 2026-07-30) —
+    #   a small table of ASCII/numeral spellings (e.g. "on9") that alias a
+    #   canonical CJK slang word (戇鳩). Reads its reading straight from the
+    #   final word_entries (post-pruning), like separable_dict above, so it
+    #   can never drift out of sync with word.bin.
+    # ------------------------------------------------------------------
+    # NOTE: the .bin value is the canonical CJK TEXT itself (e.g. 戇鳩), not
+    # its jyutping reading — src/romanized_slang.rs substitutes the ASCII
+    # run with this text *before* segmentation, so the normal word/char
+    # lookup path resolves its reading downstream just like any other CJK
+    # text. Validated here only to catch typos: it must actually resolve,
+    # either as an exact word_entries hit or (for a purely-compositional
+    # spelling like 戇鳩, legitimately pruned from word_entries by Step 5a's
+    # segmentation-shadow pass) char-by-char via char_entries.
+    romanized_slang_aliases = load_romanized_slang(ROMANIZED_SLANG_TSV)
+    romanized_slang_dict: Dict[str, str] = {}
+    for ascii_form, canonical in romanized_slang_aliases.items():
+        if canonical not in word_entries and not all(ch in char_entries for ch in canonical):
+            raise SystemExit(
+                f"[ERROR] romanized_slang.tsv: canonical spelling {canonical!r} "
+                f"(for {ascii_form!r}) does not resolve — not in word_entries "
+                f"and not every character resolves via char_entries"
+            )
+        romanized_slang_dict[ascii_form] = canonical
+
     # Sanity check: word_source/char_source must cover every key in
     # word_entries/char_entries (issue #13) — both are built via the exact
     # same priority chain, so a mismatch means the chains drifted apart.
@@ -944,6 +1003,8 @@ def main() -> None:
     char_source_bytes = write_bin(char_source, OUT_CHAR_SOURCE_BIN)
     print(f"[build]     Writing {OUT_SEPARABLE_BIN} ...")
     separable_bytes = write_bin(separable_dict, OUT_SEPARABLE_BIN)
+    print(f"[build]     Writing {OUT_ROMANIZED_SLANG_BIN} ...")
+    romanized_slang_bytes = write_bin(romanized_slang_dict, OUT_ROMANIZED_SLANG_BIN)
 
     # ------------------------------------------------------------------
     # Validate output files
@@ -958,6 +1019,7 @@ def main() -> None:
     validate_bin(OUT_WORD_SOURCE_BIN, len(word_source))
     validate_bin(OUT_CHAR_SOURCE_BIN, len(char_source))
     validate_bin(OUT_SEPARABLE_BIN, len(separable_dict))
+    validate_bin(OUT_ROMANIZED_SLANG_BIN, len(romanized_slang_dict))
 
     # ------------------------------------------------------------------
     # Final stats
@@ -975,10 +1037,11 @@ def main() -> None:
     print(f"  word_source.bin     : {len(word_source):>8,} entries   {word_source_bytes:>10,} bytes  ({word_source_bytes / 1024:.1f} KiB)")
     print(f"  char_source.bin     : {len(char_source):>8,} entries   {char_source_bytes:>10,} bytes  ({char_source_bytes / 1024:.1f} KiB)")
     print(f"  separable.bin       : {len(separable_dict):>8,} entries   {separable_bytes:>10,} bytes  ({separable_bytes / 1024:.1f} KiB)")
+    print(f"  romanized_slang.bin : {len(romanized_slang_dict):>8,} entries   {romanized_slang_bytes:>10,} bytes  ({romanized_slang_bytes / 1024:.1f} KiB)")
     total = (
         word_bytes + char_bytes + word_candidates_bytes + char_candidates_bytes
         + word_confidence_bytes + char_confidence_bytes + word_source_bytes + char_source_bytes
-        + separable_bytes
+        + separable_bytes + romanized_slang_bytes
     )
     print(f"  total               :                     {total:>10,} bytes  ({total / 1024:.1f} KiB)")
     print()
@@ -987,6 +1050,7 @@ def main() -> None:
     print(f"  tone_sandhi_words        : {len(tone_sandhi_dict):,}")
     print(f"  pruned segmentation-shadow entries : {len(pruned_word_keys):,}")
     print(f"  separable_words (離合詞)  : {len(separable_dict):,}")
+    print(f"  romanized_slang (aliases): {len(romanized_slang_dict):,}")
     print(f"  rime-cantonese (all)     : {len(rime_all):,}")
     print(f"  rime-cantonese (chars)   : {len(rime_chars):,}")
     print(f"  tojyutping (all)         : {len(tojyutping_all):,}")

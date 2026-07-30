@@ -34,15 +34,15 @@ maturin develop --release
 ## Running tests
 
 ```bash
-# Rust unit tests (181 tests)
+# Rust unit tests (190 tests)
 cargo test
 
-# Python integration tests (361 tests)
+# Python integration tests (363 tests)
 uv run --group dev pytest tests/ -v
 # or: python3 -m pytest tests/ -v
 ```
 
-All 542 tests must pass before submitting a pull request.
+All 553 tests must pass before submitting a pull request.
 
 ## Project structure
 
@@ -134,6 +134,25 @@ char-fallback path produces the right answer on its own and the whitelist
 entry is a no-op. The aspect-marker list itself (緊/咗/過/開) is a fixed,
 closed grammatical class hardcoded in `src/separable.rs` — it isn't meant to
 grow via data changes.
+
+After editing, rebuild and reinstall the same way as above.
+
+## Adding a romanized-slang alias (leetspeak, e.g. "on9")
+
+If a common ASCII/numeral leetspeak spelling of a Cantonese slang phrase
+(e.g. `on9` for 戇鳩) is being read wrong — usually because a trailing digit
+gets read as a cardinal number before anyone recognizes the whole thing as
+one word — add a row to `data/romanized_slang.tsv`:
+`ascii_form (lowercase)<TAB>canonical_cjk`.
+
+Requirements, checked by `build_dict.py` (raises `SystemExit` otherwise):
+- the canonical CJK spelling must already resolve correctly, either as an
+  exact `word_entries` hit or char-by-char via `char_entries`
+
+Matching is a whole ASCII-alnum run only (word-boundary gated by
+surrounding non-ASCII-alnum characters) and case-insensitive, applied
+*before* number/date normalization — so `on99` or `onon9` won't
+accidentally match a shorter `on9` entry, but `ON9`/`On9` will.
 
 After editing, rebuild and reinstall the same way as above.
 

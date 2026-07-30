@@ -7,6 +7,7 @@ pub mod dict;
 mod g2p;
 mod normalizer;
 mod pipeline;
+mod romanized_slang;
 mod segment;
 mod separable;
 mod user_dict;

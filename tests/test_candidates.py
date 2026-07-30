@@ -528,6 +528,30 @@ def test_address_sandhi_does_not_over_trigger(p):
     assert p.convert("黃") == "wong4"
 
 
+def test_romanized_slang_on9(p):
+    """"on9" is common HK forum/social-media leetspeak for 戇鳩 (ngong6
+    gau1, vulgar slang for "stupid/idiotic") — "on" approximates 戇 (ng-
+    onset dropped, as in casual romanization) and "9" (gau2) substitutes
+    for 鳩's sound rather than being read as the cardinal number nine.
+    Matched case-insensitively as a whole ASCII-alnum run, resolved via
+    data/romanized_slang.tsv before number normalization ever sees the
+    trailing digit."""
+    assert p.convert("on9") == "ngong6 gau1"
+    assert p.convert("ON9") == "ngong6 gau1"
+    assert p.convert("On9") == "ngong6 gau1"
+    assert p.convert("佢好on9") == "keoi5 hou2 ngong6 gau1"
+    assert p.convert("on9啊") == "ngong6 gau1 aa3"
+
+
+def test_romanized_slang_does_not_over_trigger(p):
+    """The substitution only fires on an exact whole-run match — "on99"
+    and "onon9" are different ASCII runs, not substring hits, and fall
+    through to ordinary number-reading behavior unaffected."""
+    assert p.convert("hello123") == "hello jat1 baak3 ji6 sap6 saam1"
+    assert "ngong6" not in p.convert("on99")
+    assert "ngong6" not in p.convert("onon9")
+
+
 # ── Batch ─────────────────────────────────────────────────────────────────
 
 def test_batch_matches_per_text_calls(p):
