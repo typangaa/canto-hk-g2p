@@ -4,6 +4,83 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] — 2026-07-30
+
+Follow-up research pass (agy-gemini) on 變調 (tone sandhi) beyond the v2.5.0
+"X sir" address case, cross-checked word-by-word against the actual pipeline
+output before shipping anything — several proposed cases turned out to
+already resolve correctly via rime-cantonese (親屬稱謂疊字 kinship
+reduplication: 爸爸/婆婆/爺爺/嫲嫲 etc. were already correct; no action) or
+were rejected as too high-risk for a productive/open pattern with no clean
+exclude-list (仔 diminutive-suffix trigger — deferred; 便 locative-suffix
+sandhi — deferred). Two genuinely open gaps were confirmed and fixed below.
+
+### Added — AA哋 ("rather X") tone sandhi
+
+A reduplicated single-character adjective immediately followed by 哋
+(`X X 哋`, e.g. 黃黃哋 "rather yellow") previously kept every syllable's
+citation tone — `wong4 wong4 dei6` — missing a real, independently
+documented Cantonese construction (Matthews & Yip, *Cantonese: A
+Comprehensive Grammar*): the second copy of the adjective (if its citation
+tone is 3/4/5/6) and 哋 itself both brighten to 陰上 (tone 2).
+
+**Fix.** New `src/tone_util.rs` (shared `brighten_to_tone2` primitive — 3/4/
+5/6 → 2, a broader sibling of `address_sandhi`'s own tone-4/6-only helper,
+kept separate so neither rule's behavior shifts under the other) and new
+`src/aa_dei_sandhi.rs` (purely structural post-resolution pass: no whitelist
+needed, since "single CJK char, repeated, then 哋" is unproductive outside
+this construction). A handful of common AA哋 words (肥肥哋, 傻傻哋, 矮矮哋)
+were already lexicalized as their own word-dict entry and unaffected by this
+gap — this pass only fires for combinations rime-cantonese doesn't list as a
+standalone word.
+
+**Result**: `黃黃哋` → `wong4 wong2 dei2` (was `wong4 wong4 dei6`); `悶悶哋`
+→ `mun6 mun2 dei2`; `辣辣哋` → `laat6 laat2 dei2` (陽入, still digit 6, no
+special-casing needed); an adjective already at tone 1/2 (`黑黑哋`) keeps its
+own tone and only 哋 brightens; unrelated `哋` usage (我哋/你哋/佢哋/人哋
+plural suffix, no reduplication) is unaffected.
+
+### Added — reduplicated-classifier "every X" tone sandhi
+
+A whitelisted classifier/distributive noun, immediately reduplicated (`XX`),
+expresses "every X" and previously kept its citation tone throughout — 個個
+→ `go3 go3`, 日日 → `jat6 jat6` — missing the same well-documented brightening
+(second copy → tone 2) as the AA哋 case above.
+
+**Fix.** New `data/classifier_words.tsv` — a deliberately small, evidence-
+based pilot whitelist (個/條/隻/件/樣/日/次/度/人; reduplication alone isn't
+enough signal, since 剛剛/常常 reduplicate *without* this shift) and new
+`src/classifier_reduplication.rs` (post-resolution pass sharing
+`tone_util::brighten_to_tone2`, gated on the whitelist via a new optional
+`classifier_words.bin` sidecar — absent in older/custom data dirs, the pass
+then simply never fires).
+
+**Result**: `個個` → `go3 go2` (was `go3 go3`); `日日` → `jat6 jat2`; `人人`
+→ `jan4 jan2`; `剛剛`/`常常` (reduplicated but not in the whitelist) stay
+unchanged.
+
+### Fixed — 鋪頭 (`pou1 tau2`) changed tone
+
+`鋪頭` ("shop", colloquial) previously read `頭` as its citation `tau4`
+(`pou1 tau4`) instead of the lexicalized noun-suffix reading `tau2` — the
+same pattern already correctly resolved for 碼頭/罐頭/事頭 via
+rime-cantonese. New entry in `data/tone_sandhi_words.tsv` (Batch 3,
+native-speaker verified this session). Other 頭-suffix candidates surveyed
+in the same research pass (碼頭, 枕頭, 諗頭, etc. — several already correct,
+a few still wrong) were deferred pending the same per-word verification this
+project already requires (see the v2.4.2 unverified-override incident,
+commit `e810d51`).
+
+### Verified — 隨便/順便 already correct (not a bug)
+
+The research pass initially flagged `隨便`/`順便` resolving to `bin2` as a
+possible tie-break bug (expecting `bin6` like `方便`, based on an early
+sandhi-source table). Checked against rime-cantonese's raw source data
+(`jyut6ping3.words.dict.yaml`), which lists both `bin2` and `bin6` as
+attested ties for these two words, and confirmed with a native speaker that
+`bin2` is in fact the common colloquial reading (`bin6` being the literary
+一讀). No change made — current behavior was already correct.
+
 ## [2.5.0] — 2026-07-30
 
 ### Added — "on9" romanized-slang alias (戇鳩)

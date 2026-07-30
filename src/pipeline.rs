@@ -1,6 +1,9 @@
 use crate::dict::Dict;
 use crate::user_dict::UserDict;
-use crate::{address_sandhi, g2p, normalizer, romanized_slang, segment, separable};
+use crate::{
+    aa_dei_sandhi, address_sandhi, classifier_reduplication, g2p, normalizer, romanized_slang,
+    segment, separable,
+};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -38,6 +41,12 @@ pub struct Pipeline {
     /// older/custom data dirs still work, this substitution pass then
     /// simply never fires.
     romanized_slang: Option<Dict>,
+    /// Whitelist of characters that brighten to tone 2 when immediately
+    /// reduplicated (個個, 日日, 人人 = "every X" — see
+    /// `crate::classifier_reduplication`). `None` if `classifier_words.bin`
+    /// is missing from the data directory — older/custom data dirs still
+    /// work, this override pass then simply never fires.
+    classifier_words: Option<Dict>,
     pub punc_norm: bool,
 }
 
@@ -106,6 +115,7 @@ impl Pipeline {
         let char_source = Dict::load(&dir.join("char_source.bin")).ok();
         let separable = Dict::load(&dir.join("separable.bin")).ok();
         let romanized_slang = Dict::load(&dir.join("romanized_slang.bin")).ok();
+        let classifier_words = Dict::load(&dir.join("classifier_words.bin")).ok();
         Ok(Pipeline {
             word_dict,
             char_dict,
@@ -118,6 +128,7 @@ impl Pipeline {
             char_source,
             separable,
             romanized_slang,
+            classifier_words,
             punc_norm,
         })
     }
@@ -175,6 +186,16 @@ impl Pipeline {
         for (idx, sandhi) in address_sandhi::resolve_address_sandhi(&tokens, &readings) {
             readings[idx] = sandhi;
         }
+        for (idx, sandhi) in aa_dei_sandhi::resolve_aa_dei_overrides(&tokens, &readings) {
+            readings[idx] = sandhi;
+        }
+        for (idx, sandhi) in classifier_reduplication::resolve_classifier_reduplication_overrides(
+            &tokens,
+            &readings,
+            self.classifier_words.as_ref(),
+        ) {
+            readings[idx] = sandhi;
+        }
         readings.join(" ")
     }
 
@@ -204,10 +225,11 @@ impl Pipeline {
             .collect()
     }
 
-    /// Resolve every token, then apply the "surname address" tone-sandhi
-    /// override pass (see `crate::address_sandhi`) on top — this needs each
-    /// token's already-resolved rank-0 reading (to know its tone), unlike
-    /// the `separable` override which replaces a reading before resolution.
+    /// Resolve every token, then apply the post-resolution tone-sandhi
+    /// override passes on top (`crate::address_sandhi`, `crate::aa_dei_sandhi`,
+    /// `crate::classifier_reduplication`) — these need each token's
+    /// already-resolved rank-0 reading (to know its tone), unlike the
+    /// `separable` override which replaces a reading before resolution.
     fn resolve_all(&self, tokens: &[String]) -> Vec<g2p::Resolution> {
         let sep_overrides = separable::resolve_separable_overrides(tokens, self.separable.as_ref());
         let mut results: Vec<g2p::Resolution> = tokens
@@ -215,6 +237,7 @@ impl Pipeline {
             .enumerate()
             .map(|(idx, tok)| self.resolve(tok, sep_overrides.get(&idx).map(String::as_str)))
             .collect();
+
         let readings: Vec<String> = results.iter().map(|r| r.candidates[0].clone()).collect();
         for (idx, sandhi) in address_sandhi::resolve_address_sandhi(tokens, &readings) {
             results[idx] = g2p::Resolution {
@@ -223,6 +246,27 @@ impl Pipeline {
                 source: "address_sandhi".to_owned(),
             };
         }
+
+        let readings: Vec<String> = results.iter().map(|r| r.candidates[0].clone()).collect();
+        for (idx, sandhi) in aa_dei_sandhi::resolve_aa_dei_overrides(tokens, &readings) {
+            results[idx] = g2p::Resolution {
+                candidates: vec![sandhi],
+                confidence: "certain".to_owned(),
+                source: "aa_dei_sandhi".to_owned(),
+            };
+        }
+        for (idx, sandhi) in classifier_reduplication::resolve_classifier_reduplication_overrides(
+            tokens,
+            &readings,
+            self.classifier_words.as_ref(),
+        ) {
+            results[idx] = g2p::Resolution {
+                candidates: vec![sandhi],
+                confidence: "certain".to_owned(),
+                source: "classifier_reduplication".to_owned(),
+            };
+        }
+
         results
     }
 
@@ -266,8 +310,12 @@ impl Pipeline {
     /// unreachable via real segmenter output), `"separable_compound"` (離合詞
     /// aspect-marker override, see `crate::separable`), `"address_sandhi"`
     /// (surname/nickname tone brightened before "sir", see
-    /// `crate::address_sandhi`), `"unresolved"` (truly unknown char), or
-    /// `"unknown"` (source sidecar missing/no entry).
+    /// `crate::address_sandhi`), `"aa_dei_sandhi"` (AA哋 "rather X" tone
+    /// brightened, see `crate::aa_dei_sandhi`),
+    /// `"classifier_reduplication"` (reduplicated classifier "every X" tone
+    /// brightened, see `crate::classifier_reduplication`), `"unresolved"`
+    /// (truly unknown char), or `"unknown"` (source sidecar missing/no
+    /// entry).
     pub fn convert_candidates(
         &self,
         text: &str,

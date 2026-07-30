@@ -46,3 +46,15 @@
 友	jau2
 計	gai2
 雀	zoek2
+#
+# Batch 3 (2026-07-30): 頭 (tau4→tau2) nominal-suffix changed tone — a
+# well-documented pattern (Matthews & Yip) where 頭 as a lexicalized noun
+# suffix for a concrete place/tool/thing reads tau2, not its citation tau4
+# (compare 頭 as "head"/"start"/a prefix, which keeps tau4: 頭痛, 開頭). Most
+# common words in this pattern (碼頭, 罐頭, 事頭, 枕頭, 諗頭...) were checked
+# and several already resolve correctly via rime-cantonese; this file adds
+# ONLY the one confirmed gap, native-speaker verified in this session. Other
+# 頭-suffix candidates from the same pattern were surveyed (agy-gemini
+# research, 2026-07-30) but deferred pending the same per-word verification
+# this project already requires (see commit e810d51).
+鋪頭	pou1 tau2

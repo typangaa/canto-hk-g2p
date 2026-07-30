@@ -34,15 +34,15 @@ maturin develop --release
 ## Running tests
 
 ```bash
-# Rust unit tests (190 tests)
+# Rust unit tests (207 tests)
 cargo test
 
-# Python integration tests (363 tests)
+# Python integration tests (369 tests)
 uv run --group dev pytest tests/ -v
 # or: python3 -m pytest tests/ -v
 ```
 
-All 553 tests must pass before submitting a pull request.
+All 576 tests must pass before submitting a pull request.
 
 ## Project structure
 
@@ -153,6 +153,25 @@ Matching is a whole ASCII-alnum run only (word-boundary gated by
 surrounding non-ASCII-alnum characters) and case-insensitive, applied
 *before* number/date normalization — so `on99` or `onon9` won't
 accidentally match a shorter `on9` entry, but `ON9`/`On9` will.
+
+After editing, rebuild and reinstall the same way as above.
+
+## Adding a reduplicated-classifier "every X" whitelist entry
+
+`個個`, `日日`, `人人` etc. brighten their second copy to tone 2 (量詞疊字
+"every X" tone sandhi, see `src/classifier_reduplication.rs`) when the
+repeated character is in `data/classifier_words.tsv`. If you find a common
+classifier or distributive noun missing from that whitelist, add it as one
+character per line.
+
+Only add a character with a genuine, attested spoken "every X" example —
+reduplication alone is **not** enough signal, since some reduplicated words
+(剛剛 "just now", 常常 "often") do *not* undergo this shift. Do not add by
+analogy to characters already in the list.
+
+You don't need to know or write the character's own citation tone — it's
+read normally from `word.bin`/`char.bin` at runtime; the tsv is purely a
+membership whitelist.
 
 After editing, rebuild and reinstall the same way as above.
 

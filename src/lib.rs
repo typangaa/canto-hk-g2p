@@ -2,7 +2,9 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 use std::collections::HashMap;
 
+mod aa_dei_sandhi;
 mod address_sandhi;
+mod classifier_reduplication;
 pub mod dict;
 mod g2p;
 mod normalizer;
@@ -10,6 +12,7 @@ mod pipeline;
 mod romanized_slang;
 mod segment;
 mod separable;
+mod tone_util;
 mod user_dict;
 
 pub use pipeline::Pipeline;

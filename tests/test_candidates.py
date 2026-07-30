@@ -552,6 +552,61 @@ def test_romanized_slang_does_not_over_trigger(p):
     assert "ngong6" not in p.convert("onon9")
 
 
+def test_tone_sandhi_pou_tau(p):
+    """鋪頭 ("shop", colloquial) reads tau2, not 頭's citation tau4 — the
+    same 頭-as-lexicalized-noun-suffix pattern already correctly resolved
+    for 碼頭/罐頭/事頭 via rime-cantonese; 鋪頭 was the confirmed gap
+    (native-speaker verified, data/tone_sandhi_words.tsv Batch 3)."""
+    assert p.convert("鋪頭") == "pou1 tau2"
+
+
+# ── AA哋 ("rather X") tone sandhi ───────────────────────────────────────────
+
+def test_aa_dei_sandhi_brightens_second_syllable_and_dei(p):
+    """A reduplicated single-char adjective + 哋 (AA哋, "rather X") brightens
+    the second copy of the adjective (if its citation tone is 3/4/5/6) and
+    哋 itself to tone 2 — 黃黃哋 -> wong4 wong2 dei2 (not wong4 wong4 dei6),
+    matching the well-documented Cantonese "rather X" construction."""
+    assert p.convert("黃黃哋") == "wong4 wong2 dei2"
+    assert p.convert("悶悶哋") == "mun6 mun2 dei2"
+    assert p.convert("辣辣哋") == "laat6 laat2 dei2"  # 陽入, still digit 6
+
+
+def test_aa_dei_sandhi_tone_1_2_adjective_unaffected(p):
+    """An adjective already at tone 1 or 2 keeps its own tone — only 哋
+    itself brightens (dei6 -> dei2)."""
+    assert p.convert("黑黑哋") == "hak1 hak1 dei2"
+
+
+def test_aa_dei_sandhi_does_not_over_trigger(p):
+    """No reduplication, or not immediately followed by 哋, must not
+    trigger — our plural-suffix 哋 (我哋/你哋/佢哋/人哋) is unaffected since
+    there's no reduplicated single-char token directly before it."""
+    assert p.convert("我哋") == "ngo5 dei6"
+    assert p.convert("人哋") == "jan4 dei6"
+    assert p.convert("黃色") == "wong4 sik1"
+
+
+# ── Reduplicated classifier ("every X") tone sandhi ─────────────────────────
+
+def test_classifier_reduplication_brightens_second_copy(p):
+    """A whitelisted classifier/distributive noun, reduplicated, expresses
+    "every X" and brightens its second copy to tone 2 — 個個 -> go3 go2
+    (not go3 go3), 日日 -> jat6 jat2, 人人 -> jan4 jan2."""
+    assert p.convert("個個") == "go3 go2"
+    assert p.convert("條條") == "tiu4 tiu2"
+    assert p.convert("日日") == "jat6 jat2"
+    assert p.convert("人人") == "jan4 jan2"
+
+
+def test_classifier_reduplication_does_not_over_trigger(p):
+    """Reduplication alone is not enough signal — words that reduplicate
+    without this "every X" sense (剛剛 "just now", 常常 "often") are not in
+    the whitelist and keep their citation tone unchanged."""
+    assert p.convert("剛剛") == "gong1 gong1"
+    assert p.convert("常常") == "soeng4 soeng4"
+
+
 # ── Batch ─────────────────────────────────────────────────────────────────
 
 def test_batch_matches_per_text_calls(p):

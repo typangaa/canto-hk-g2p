@@ -1,0 +1,25 @@
+# classifier_words.tsv — 量詞/常用名詞疊字表達「每一個/全部」變調 (reduplicated
+# classifier "every X" tone sandhi) 觸發字白名單。
+#
+# When one of these single characters is immediately reduplicated (XX), the
+# second copy is read with its tone brightened to 陰上 (tone 2) — 個個 (go3
+# go3 -> go3 go2), 日日 (jat6 jat6 -> jat6 jat2), 人人 (jan4 jan4 -> jan4
+# jan2). Each character's own citation tone is read normally from
+# word.bin/char.bin at runtime — this file stores ONLY the whitelist
+# (one character per line), never a reading, so it can't drift out of sync.
+#
+# This is a deliberately small pilot list of characters with a well-attested
+# real "every X" reduplicated usage — reduplication alone is NOT enough
+# signal (剛剛 "just now", 常常 "often" reduplicate without this shift), so
+# only add a character here with a genuine spoken example, not by analogy.
+# Format: one character per line. Blank lines and lines starting with '#'
+# are ignored.
+個
+條
+隻
+件
+樣
+日
+次
+度
+人

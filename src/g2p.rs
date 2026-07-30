@@ -92,9 +92,15 @@ pub struct Resolution {
     /// matched a whitelisted 離合詞 in `separable.bin` — see
     /// `crate::separable`), `"address_sandhi"` (a single-char token's 陽
     /// tone brightened to tone 2 before the English address term "sir" —
-    /// see `crate::address_sandhi`), `"unresolved"` (truly unknown char,
-    /// kept as-is), or `"unknown"` (the source sidecar has no entry / is
-    /// missing for a dict hit — older or custom data dirs).
+    /// see `crate::address_sandhi`), `"aa_dei_sandhi"` (a reduplicated
+    /// single-char adjective's second copy — and the 哋 suffix — brightened
+    /// to tone 2 in an AA哋 "rather X" construction — see
+    /// `crate::aa_dei_sandhi`), `"classifier_reduplication"` (a whitelisted
+    /// classifier's second copy brightened to tone 2 in an "every X"
+    /// reduplication — see `crate::classifier_reduplication`),
+    /// `"unresolved"` (truly unknown char, kept as-is), or `"unknown"` (the
+    /// source sidecar has no entry / is missing for a dict hit — older or
+    /// custom data dirs).
     pub source: String,
 }
 

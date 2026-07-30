@@ -34,6 +34,7 @@ VARIANT_WORDS_TSV = DATA_DIR / "variant_words.tsv"
 TONE_SANDHI_WORDS_TSV = DATA_DIR / "tone_sandhi_words.tsv"
 SEPARABLE_WORDS_TSV = DATA_DIR / "separable_words.tsv"
 ROMANIZED_SLANG_TSV = DATA_DIR / "romanized_slang.tsv"
+CLASSIFIER_WORDS_TSV = DATA_DIR / "classifier_words.tsv"
 
 RIME_FILES: List[Path] = [
     RAW_DIR / "rime-cantonese" / "jyut6ping3.chars.dict.yaml",
@@ -59,6 +60,7 @@ OUT_WORD_SOURCE_BIN = PKG_DATA_DIR / "word_source.bin"
 OUT_CHAR_SOURCE_BIN = PKG_DATA_DIR / "char_source.bin"
 OUT_SEPARABLE_BIN = PKG_DATA_DIR / "separable.bin"
 OUT_ROMANIZED_SLANG_BIN = PKG_DATA_DIR / "romanized_slang.bin"
+OUT_CLASSIFIER_WORDS_BIN = PKG_DATA_DIR / "classifier_words.bin"
 CMUDICT_SRC = RAW_DIR / "cmudict" / "cmudict.dict"
 CMUDICT_DST = PKG_DATA_DIR / "cmudict.dict"
 
@@ -199,6 +201,34 @@ def load_romanized_slang(path: Path) -> Dict[str, str]:
                 result[ascii_form] = canonical
 
     print(f"[slang]     loaded {len(result):,} entries from {path.name}")
+    return result
+
+
+def load_classifier_words(path: Path) -> Set[str]:
+    """
+    Load classifier_words.tsv — a whitelist of single characters that
+    brighten to tone 2 when immediately reduplicated (個個, 日日, 人人 = "every
+    X"). Format: one character per line. Skips lines starting with '#' or
+    blank lines. Each non-comment line must be exactly one character.
+    """
+    result: Set[str] = set()
+    if not path.exists():
+        print(f"[WARN] classifier_words.tsv not found: {path}", file=sys.stderr)
+        return result
+
+    with open(path, encoding="utf-8") as fh:
+        for lineno, raw in enumerate(fh, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if len(line) != 1:
+                raise SystemExit(
+                    f"[ERROR] classifier_words.tsv:{lineno}: {line!r} is not "
+                    f"exactly 1 character"
+                )
+            result.add(line)
+
+    print(f"[classifier] loaded {len(result):,} entries from {path.name}")
     return result
 
 
@@ -969,6 +999,24 @@ def main() -> None:
             )
         romanized_slang_dict[ascii_form] = canonical
 
+    # ------------------------------------------------------------------
+    # Step 5e: Build classifier_words.bin (reduplicated-classifier tone
+    #   sandhi, 2026-07-30) — a small whitelist of characters that brighten
+    #   to tone 2 when reduplicated (個個, 日日, 人人 = "every X"). Only a
+    #   presence check at runtime (src/classifier_reduplication.rs), so the
+    #   .bin stores each character mapped to itself; validated here only to
+    #   catch typos (must resolve via char_entries).
+    # ------------------------------------------------------------------
+    classifier_chars = load_classifier_words(CLASSIFIER_WORDS_TSV)
+    for ch in classifier_chars:
+        if ch not in char_entries:
+            raise SystemExit(
+                f"[ERROR] classifier_words.tsv: {ch!r} not found in "
+                f"char_entries — it must already resolve via "
+                f"rime/tojyutping/unihan/oral_hk"
+            )
+    classifier_dict: Dict[str, str] = {ch: ch for ch in classifier_chars}
+
     # Sanity check: word_source/char_source must cover every key in
     # word_entries/char_entries (issue #13) — both are built via the exact
     # same priority chain, so a mismatch means the chains drifted apart.
@@ -1005,6 +1053,8 @@ def main() -> None:
     separable_bytes = write_bin(separable_dict, OUT_SEPARABLE_BIN)
     print(f"[build]     Writing {OUT_ROMANIZED_SLANG_BIN} ...")
     romanized_slang_bytes = write_bin(romanized_slang_dict, OUT_ROMANIZED_SLANG_BIN)
+    print(f"[build]     Writing {OUT_CLASSIFIER_WORDS_BIN} ...")
+    classifier_bytes = write_bin(classifier_dict, OUT_CLASSIFIER_WORDS_BIN)
 
     # ------------------------------------------------------------------
     # Validate output files
@@ -1020,6 +1070,7 @@ def main() -> None:
     validate_bin(OUT_CHAR_SOURCE_BIN, len(char_source))
     validate_bin(OUT_SEPARABLE_BIN, len(separable_dict))
     validate_bin(OUT_ROMANIZED_SLANG_BIN, len(romanized_slang_dict))
+    validate_bin(OUT_CLASSIFIER_WORDS_BIN, len(classifier_dict))
 
     # ------------------------------------------------------------------
     # Final stats
@@ -1038,10 +1089,11 @@ def main() -> None:
     print(f"  char_source.bin     : {len(char_source):>8,} entries   {char_source_bytes:>10,} bytes  ({char_source_bytes / 1024:.1f} KiB)")
     print(f"  separable.bin       : {len(separable_dict):>8,} entries   {separable_bytes:>10,} bytes  ({separable_bytes / 1024:.1f} KiB)")
     print(f"  romanized_slang.bin : {len(romanized_slang_dict):>8,} entries   {romanized_slang_bytes:>10,} bytes  ({romanized_slang_bytes / 1024:.1f} KiB)")
+    print(f"  classifier_words.bin: {len(classifier_dict):>8,} entries   {classifier_bytes:>10,} bytes  ({classifier_bytes / 1024:.1f} KiB)")
     total = (
         word_bytes + char_bytes + word_candidates_bytes + char_candidates_bytes
         + word_confidence_bytes + char_confidence_bytes + word_source_bytes + char_source_bytes
-        + separable_bytes + romanized_slang_bytes
+        + separable_bytes + romanized_slang_bytes + classifier_bytes
     )
     print(f"  total               :                     {total:>10,} bytes  ({total / 1024:.1f} KiB)")
     print()
@@ -1051,6 +1103,7 @@ def main() -> None:
     print(f"  pruned segmentation-shadow entries : {len(pruned_word_keys):,}")
     print(f"  separable_words (離合詞)  : {len(separable_dict):,}")
     print(f"  romanized_slang (aliases): {len(romanized_slang_dict):,}")
+    print(f"  classifier_words (量詞)   : {len(classifier_dict):,}")
     print(f"  rime-cantonese (all)     : {len(rime_all):,}")
     print(f"  rime-cantonese (chars)   : {len(rime_chars):,}")
     print(f"  tojyutping (all)         : {len(tojyutping_all):,}")
