@@ -90,9 +90,11 @@ pub struct Resolution {
     /// unreachable through real segmenter output, see known limitation),
     /// `"separable_compound"` (a `[verb, aspect_marker, noun]` triple
     /// matched a whitelisted 離合詞 in `separable.bin` — see
-    /// `crate::separable`), `"unresolved"` (truly unknown char, kept
-    /// as-is), or `"unknown"` (the source sidecar has no entry / is missing
-    /// for a dict hit — older or custom data dirs).
+    /// `crate::separable`), `"address_sandhi"` (a single-char token's 陽
+    /// tone brightened to tone 2 before the English address term "sir" —
+    /// see `crate::address_sandhi`), `"unresolved"` (truly unknown char,
+    /// kept as-is), or `"unknown"` (the source sidecar has no entry / is
+    /// missing for a dict hit — older or custom data dirs).
     pub source: String,
 }
 

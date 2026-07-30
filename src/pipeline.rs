@@ -1,6 +1,6 @@
 use crate::dict::Dict;
 use crate::user_dict::UserDict;
-use crate::{g2p, normalizer, segment, separable};
+use crate::{address_sandhi, g2p, normalizer, segment, separable};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -155,7 +155,7 @@ impl Pipeline {
         }
         let tokens = self.tokens_for(text);
         let overrides = separable::resolve_separable_overrides(&tokens, self.separable.as_ref());
-        tokens
+        let mut readings: Vec<String> = tokens
             .iter()
             .enumerate()
             .map(|(idx, tok)| {
@@ -163,8 +163,11 @@ impl Pipeline {
                     g2p::token_to_jyutping(tok, &self.word_dict, &self.char_dict, &self.user_dict)
                 })
             })
-            .collect::<Vec<_>>()
-            .join(" ")
+            .collect();
+        for (idx, sandhi) in address_sandhi::resolve_address_sandhi(&tokens, &readings) {
+            readings[idx] = sandhi;
+        }
+        readings.join(" ")
     }
 
     pub fn convert_batch(&self, texts: &[String]) -> Vec<String> {
@@ -182,16 +185,37 @@ impl Pipeline {
             return vec![];
         }
         let tokens = self.tokens_for(text);
-        let overrides = separable::resolve_separable_overrides(&tokens, self.separable.as_ref());
+        let results = self.resolve_all(&tokens);
         tokens
             .into_iter()
-            .enumerate()
-            .map(|(idx, tok)| {
-                let r = self.resolve(&tok, overrides.get(&idx).map(String::as_str));
+            .zip(results)
+            .map(|(tok, r)| {
                 let lang = classify_lang(&tok).to_owned();
                 (tok, r.candidates[0].clone(), lang, r.confidence, r.source)
             })
             .collect()
+    }
+
+    /// Resolve every token, then apply the "surname address" tone-sandhi
+    /// override pass (see `crate::address_sandhi`) on top — this needs each
+    /// token's already-resolved rank-0 reading (to know its tone), unlike
+    /// the `separable` override which replaces a reading before resolution.
+    fn resolve_all(&self, tokens: &[String]) -> Vec<g2p::Resolution> {
+        let sep_overrides = separable::resolve_separable_overrides(tokens, self.separable.as_ref());
+        let mut results: Vec<g2p::Resolution> = tokens
+            .iter()
+            .enumerate()
+            .map(|(idx, tok)| self.resolve(tok, sep_overrides.get(&idx).map(String::as_str)))
+            .collect();
+        let readings: Vec<String> = results.iter().map(|r| r.candidates[0].clone()).collect();
+        for (idx, sandhi) in address_sandhi::resolve_address_sandhi(tokens, &readings) {
+            results[idx] = g2p::Resolution {
+                candidates: vec![sandhi],
+                confidence: "certain".to_owned(),
+                source: "address_sandhi".to_owned(),
+            };
+        }
+        results
     }
 
     /// Rayon-parallel batch sibling of `convert_detailed()` — same per-text
@@ -231,8 +255,11 @@ impl Pipeline {
     /// fallback), `"user_dict"` (caller override — always `"certain"` too,
     /// since an override is a final decision), `"passthrough"` (non-CJK),
     /// `"char_fallback"` (OOV multi-char token, architecturally
-    /// unreachable via real segmenter output), `"unresolved"` (truly
-    /// unknown char), or `"unknown"` (source sidecar missing/no entry).
+    /// unreachable via real segmenter output), `"separable_compound"` (離合詞
+    /// aspect-marker override, see `crate::separable`), `"address_sandhi"`
+    /// (surname/nickname tone brightened before "sir", see
+    /// `crate::address_sandhi`), `"unresolved"` (truly unknown char), or
+    /// `"unknown"` (source sidecar missing/no entry).
     pub fn convert_candidates(
         &self,
         text: &str,
@@ -241,12 +268,11 @@ impl Pipeline {
             return vec![];
         }
         let tokens = self.tokens_for(text);
-        let overrides = separable::resolve_separable_overrides(&tokens, self.separable.as_ref());
+        let results = self.resolve_all(&tokens);
         tokens
             .into_iter()
-            .enumerate()
-            .map(|(idx, tok)| {
-                let r = self.resolve(&tok, overrides.get(&idx).map(String::as_str));
+            .zip(results)
+            .map(|(tok, r)| {
                 let lang = classify_lang(&tok).to_owned();
                 (tok, r.candidates, lang, r.confidence, r.source)
             })

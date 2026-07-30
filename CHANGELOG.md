@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] — 2026-07-30
+
+### Added — 姓氏稱呼變調 (surname address tone sandhi) before "sir"
+
+Follow-up to the v2.4.2 polyphone fixes: checking `黃sir`/`陳sir` found the
+segmentation and readings themselves were already correct (`wong4 sir`,
+`can4 sir`), but a real Cantonese phenomenon was missing — addressing
+someone by surname + "sir" (as HK students/subordinates address a
+teacher/officer) brightens the surname's citation tone: a 陽 tone (4 陽平 or
+6 陽去) becomes 陰上 (tone 2). Verified against an independent source
+([信報教育](https://edu.hkej.com/php/article.detail.php?aid=60291)):
+陳(`can4`)→`can2`, 黃(`wong4`)→`wong2`, 鄭(`zeng6`)→`zeng2`,
+趙(`ziu6`)→`ziu2`, 鄧(`dang6`)→`dang2`, 梁(`loeng4`)→`loeng2`.
+
+This is a tone-sandhi phenomenon, not a polyphone-selection bug, and
+CLAUDE.md's locked v1 scope explicitly defers tone sandhi to a future
+feature. This is one narrow, well-evidenced exception carved out of that
+deferral — not a reversal of it — scoped tightly to a single, unambiguous,
+closed-class trigger ("sir" immediately following a single CJK-character
+token) rather than the general (and much messier) tone-sandhi problem. The
+same phenomenon also covers 阿X/老X/X伯 forms, but those are out of scope
+here — 阿/老 prefix far too many unrelated common words (老師/老鼠/阿媽) to
+safely gate without a name-detection layer this project doesn't have.
+
+**Implementation**: new `src/address_sandhi.rs` — a stateless phonological
+rule (no lookup table/data file needed, unlike `separable.rs`'s 離合詞
+whitelist), applied as a post-resolution override pass in `Pipeline`. Fires
+whenever a single-CJK-char token's resolved reading ends in tone 4 or 6 and
+is immediately followed by a token matching "sir" (case-insensitively) —
+`source` reports `"address_sandhi"` for the overridden token. Also correctly
+generalizes to nickname-before-"sir" forms (`肥sir` → `fei2 sir`, not just
+surnames), matching the construction rather than a specific word list.
+
+**Result**: `黃sir` → `wong2 sir` (was `wong4 sir`); `李sir` stays `lei5 sir`
+(already tone 5 — no evidence that tone brightens the same way, left
+untouched); `黃生`/`黃色`/bare `黃` unaffected (citation tone `wong4`
+preserved outside the "sir" address construction).
+
 ## [2.4.2] — 2026-07-24
 
 ### Fixed — 唔/滴 mis-tagged tone entries inherited from rime-cantonese

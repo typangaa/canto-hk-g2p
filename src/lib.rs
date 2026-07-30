@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyList;
 use std::collections::HashMap;
 
+mod address_sandhi;
 pub mod dict;
 mod g2p;
 mod normalizer;

@@ -471,6 +471,44 @@ def test_oral_hk_faan_colloquial_and_formal_words_unaffected(p):
     assert p.convert("迴光返照") == "wui4 gwong1 faan2 ziu3"
 
 
+def test_address_sandhi_surname_before_sir(p):
+    """黃sir/陳sir/etc: a genuine Cantonese 姓氏稱呼變調 (surname address tone
+    sandhi), not a polyphone-selection bug — a 陽 tone (4 陽平 or 6 陽去)
+    brightens to 陰上 (tone 2) before the address term "sir". Verified
+    against an independent source (信報教育, edu.hkej.com/php/article.detail.php?aid=60291):
+    陳(can4)->can2, 黃(wong4)->wong2, 鄭(zeng6)->zeng2, 趙(ziu6)->ziu2,
+    鄧(dang6)->dang2, 梁(loeng4)->loeng2."""
+    assert p.convert("黃sir") == "wong2 sir"
+    assert p.convert("陳sir") == "can2 sir"
+    assert p.convert("鄭sir") == "zeng2 sir"
+    assert p.convert("趙sir") == "ziu2 sir"
+    assert p.convert("鄧sir") == "dang2 sir"
+    assert p.convert("梁sir") == "loeng2 sir"
+    assert p.convert_candidates("黃sir")[0][3] == "certain"
+    assert p.convert_candidates("黃sir")[0][4] == "address_sandhi"
+
+
+def test_address_sandhi_case_insensitive_and_nickname(p):
+    """Matching is case-insensitive on "sir" (黃Sir/黃SIR all trigger), and
+    the rule is a general tone-brightening pattern, not a surname whitelist
+    — a nickname like 肥 (fei4, "fatty") before "sir" brightens the same
+    way (肥sir -> fei2 sir), consistent with the sandhi being about the
+    address construction, not specifically about surnames."""
+    assert p.convert("黃Sir") == "wong2 Sir"
+    assert p.convert("黃SIR") == "wong2 SIR"
+    assert p.convert("肥sir") == "fei2 sir"
+
+
+def test_address_sandhi_does_not_over_trigger(p):
+    """The sandhi must only fire immediately before "sir" — 李sir stays
+    lei5 (already tone 5, no evidence that tone brightens the same way),
+    and 黃 elsewhere (黃生/黃色/bare 黃) keeps its citation tone wong4."""
+    assert p.convert("李sir") == "lei5 sir"
+    assert p.convert("黃生") == "wong4 saang1"
+    assert p.convert("黃色") == "wong4 sik1"
+    assert p.convert("黃") == "wong4"
+
+
 # ── Batch ─────────────────────────────────────────────────────────────────
 
 def test_batch_matches_per_text_calls(p):
