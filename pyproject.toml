@@ -64,4 +64,6 @@ include = [
     "python/canto_hk_g2p/data/char_source.bin",
     "python/canto_hk_g2p/data/separable.bin",
     "python/canto_hk_g2p/data/cmudict.dict",
+    "python/canto_hk_g2p/data/classifier_words.bin",
+    "python/canto_hk_g2p/data/romanized_slang.bin",
 ]
