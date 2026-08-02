@@ -4,6 +4,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] — 2026-08-02
+
+### Fixed — PyPI wheels silently missing two data sidecars since v2.5.0
+
+`[tool.maturin]`'s `include` list in `pyproject.toml` enumerates every
+bundled `.bin` file explicitly (no glob) — `data/romanized_slang.bin` (added
+in v2.5.0, for the `on9` → 戇鳩 alias) and `data/classifier_words.bin` (added
+in v2.6.0, for reduplicated-classifier "every X" sandhi) were both built
+correctly in CI but never added to this list, so every wheel built for
+those two releases — including what actually shipped to PyPI — silently
+dropped both sidecars. Both features then simply never fired for anyone who
+`pip install`ed the package (their optional-sidecar design, meant for
+graceful degradation on older/custom data dirs, meant this failed silently
+instead of erroring).
+
+**Not affected**: AA哋 sandhi, "X sir" address sandhi, and 離合詞
+(瞓緊覺) overrides are either purely structural (no sidecar) or use
+`separable.bin`, which was already in the include list since v2.4.0 — none
+of these regressed.
+
+**Root cause of the miss**: local verification throughout v2.5.0/v2.6.0
+development used `maturin develop` (editable install), which resolves data
+files from the working tree directly and never exercises the
+`pyproject.toml` include list — the exact code path a real `pip install`
+from a built wheel depends on. Caught by installing `canto-hk-g2p==2.6.0`
+from PyPI into a clean environment and reproducing the silent no-op.
+
+**Fix**: add both paths to the include list (commit `6938a6b`). Verified by
+building a release wheel locally and `pip install`-ing it into a clean
+environment (not `maturin develop`) — `on9` → `ngong6 gau1`, `個個` →
+`go3 go2`, `日日` → `jat6 jat2` all now resolve correctly from the actual
+packaged wheel.
+
+No source code, dictionary data, or public API changed — this is a
+packaging-only fix. `pip install canto-hk-g2p` already resolves to this
+version; only environments pinned to `==2.5.0` or `==2.6.0` are still
+affected.
+
 ## [2.6.0] — 2026-07-30
 
 Follow-up research pass (agy-gemini) on 變調 (tone sandhi) beyond the v2.5.0
